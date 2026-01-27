@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: deep-research-agent
+Version: 0.1.0
+Summary: Deep Research Agent (LangGraph + FastAPI + Reflection Loop)
+Requires-Python: >=3.11
+Requires-Dist: fastapi==0.115.6
+Requires-Dist: uvicorn[standard]==0.30.6
+Requires-Dist: pydantic==2.10.4
+Requires-Dist: pydantic-settings==2.7.0
+Requires-Dist: httpx==0.27.2
+Requires-Dist: python-dotenv==1.0.1
+Requires-Dist: langgraph==0.2.58
+Requires-Dist: langchain-core==0.3.29
+Requires-Dist: openai==1.59.5
+Provides-Extra: test
+Requires-Dist: pytest==8.3.4; extra == "test"
+Requires-Dist: pytest-asyncio==0.25.2; extra == "test"
+Requires-Dist: respx==0.21.1; extra == "test"
