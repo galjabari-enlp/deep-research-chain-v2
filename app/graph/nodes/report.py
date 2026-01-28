@@ -6,6 +6,7 @@ from app.graph.models import FinalReport, SearchResult
 from app.graph.state import ResearchState
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def _collect_sources(state: ResearchState, cap: int = 25) -> list[SearchResult]:
@@ -61,7 +62,8 @@ async def report_node(state: ResearchState) -> ResearchState:
             "You are a careful research writer. Write polished, natural prose. "
             "Do NOT use bold label prefixes like '**X**:' or dictionary-entry field labels. "
             "Write complete sentences and paragraphs. "
-            "Only cite from the provided sources."
+            "Only cite from the provided sources. "
+            "You must return structured JSON blocks, and each block must include a short sub-section heading."
         )
 
         source_lines: list[str] = []
@@ -89,16 +91,18 @@ async def report_node(state: ResearchState) -> ResearchState:
             "Rules:\n"
             "- Each block must include 'heading' (2-6 words) for the sub-section title; no markdown, no trailing colon.\n"
             "- 'text' must be plain prose without leading labels like '**Something**:'\n"
-            "- Do not use markdown headings.\n"
+            "- Do not use markdown headings; headings must go in the JSON 'heading' field only.\n"
             "- Each citation id must correspond to one of the provided sources.\n"
         )
 
         raw = await llm.chat_json(system=system, user=user)
         import json as _json
+        logger.warning("LLM RAW OUTPUT (first 4000 chars):\n%s", raw[:4000])
 
         obj = _json.loads(raw)
         raw_blocks = obj.get("blocks") if isinstance(obj, dict) else None
         if isinstance(raw_blocks, list) and raw_blocks:
+            empty_heading_count = 0
             for b in raw_blocks[:40]:
                 if not isinstance(b, dict):
                     continue
@@ -106,6 +110,8 @@ async def report_node(state: ResearchState) -> ResearchState:
                 if not text:
                     continue
                 heading = str(b.get("heading") or "").strip()
+                if not heading:
+                    empty_heading_count += 1
 
                 cits_in = b.get("citations")
                 citations: list[ReportCitation] = []
@@ -128,10 +134,29 @@ async def report_node(state: ResearchState) -> ResearchState:
                     )
                 )
 
+            if raw_blocks:
+                logger.info(
+                    "Report blocks parsed: count=%s empty_heading=%s",
+                    min(len(raw_blocks), 40),
+                    empty_heading_count,
+                )
+                if empty_heading_count:
+                    sample = [
+                        {
+                            "id": str(rb.get("id") or ""),
+                            "heading": str(rb.get("heading") or ""),
+                            "text_preview": (str(rb.get("text") or "").strip()[:120]),
+                        }
+                        for rb in raw_blocks[:5]
+                        if isinstance(rb, dict)
+                    ]
+                    logger.warning("Some report blocks have empty headings. sample=%s", sample)
+
     except Exception as e:  # noqa: BLE001
         logger.info("LLM report blocks generation failed; falling back to snippet-derived blocks: %s", e)
 
     # 2) Fallback: build blocks from key findings + broad citations
+    # Ensure headings are non-empty so the UI always has subsection titles.
     if not blocks:
         for i, txt in enumerate(key_findings[:12]):
             txt = (txt or "").strip()
@@ -142,7 +167,8 @@ async def report_node(state: ResearchState) -> ResearchState:
             for j, r in enumerate(sources[:4]):
                 citations.append(ReportCitation(id=f"S{j + 1}", url=r.url, title=r.title or ""))
 
-            blocks.append(ReportBlock(id=f"B{i + 1}", heading="", text=txt, citations=citations))
+            heading = "Key finding" if len(key_findings) == 1 else f"Key finding {i + 1}"
+            blocks.append(ReportBlock(id=f"B{i + 1}", heading=heading, text=txt, citations=citations))
 
     # Legacy evidence list remains (but UI uses blocks primarily)
     evidence: list[str] = []

@@ -221,6 +221,28 @@ async def research_stream(query: constr(min_length=3, max_length=500), max_revis
                 critic=final_state.critic,
             )
 
+            # Debug: heading completeness for UI blocks
+            try:
+                blocks = (report.blocks or []) if report is not None else []
+                empty = sum(1 for b in blocks if not (getattr(b, "heading", "") or "").strip())
+                logger.info(
+                    "Final report blocks: count=%s empty_heading=%s",
+                    len(blocks),
+                    empty,
+                )
+                if empty:
+                    sample = [
+                        {
+                            "id": getattr(b, "id", ""),
+                            "heading": getattr(b, "heading", ""),
+                            "text_preview": (getattr(b, "text", "") or "")[:120],
+                        }
+                        for b in blocks[:5]
+                    ]
+                    logger.warning("Empty headings detected in final report blocks. sample=%s", sample)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Failed to log report block headings: %s", e)
+
             yield f"data: {json.dumps({'type': 'final', 'response': response.model_dump(mode='json')})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
