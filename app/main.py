@@ -7,7 +7,11 @@ import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, conint, constr
+
+# Mounting StaticFiles at a path that overlaps with API routes can be subtle.
+# We'll mount the frontend at the end of the file so explicit API routes win.
 
 from app.core import setup_logging
 from app.graph import ResearchState, build_research_graph
@@ -15,6 +19,7 @@ from app.graph.models import ResearchResponse
 from app.services import LLMClient, PageFetcher, SerperClient
 
 logger = logging.getLogger(__name__)
+logger.info("UI static dirs: dist=%s assets=%s", "frontend/dist", "frontend/dist/assets")
 
 # Explicitly load `.env` for API runs.
 load_dotenv(override=False)
@@ -29,14 +34,45 @@ class ResearchRequest(BaseModel):
     max_revisions: conint(ge=1, le=10) = Field(default=10)
 
 
+# UI index (React build)
 @app.get("/")
-async def ui() -> FileResponse:
+async def ui_index() -> FileResponse:
+    return FileResponse("frontend/dist/index.html")
+
+
+@app.get("/ui")
+async def ui_index_slashless() -> FileResponse:
+    return FileResponse("frontend/dist/index.html")
+
+
+# NOTE: Keep a separate legacy UI route during migration for easy rollback/comparison.
+@app.get("/legacy")
+async def legacy_ui() -> FileResponse:
     return FileResponse("app/static/index.html")
 
 
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/debug/config")
+async def debug_config() -> dict[str, object]:
+    """Debug-only: return non-sensitive config details to verify runtime env.
+
+    This intentionally avoids returning full secrets.
+    """
+
+    from app.core import settings
+
+    key = settings.openai_api_key or ""
+    return {
+        "openai_model": settings.openai_model,
+        "openai_base_url": settings.openai_base_url or None,
+        "openai_api_key_len": len(key),
+        "openai_api_key_tail": key[-4:] if len(key) >= 4 else "",
+        "serper_api_key_len": len(settings.serper_api_key or ""),
+    }
 
 
 @app.post("/research", response_model=ResearchResponse)
@@ -74,6 +110,7 @@ async def research(req: ResearchRequest) -> ResearchResponse:
         report=report,
         sources=sources,
         trace=final_state.trace,
+        execution_trace=final_state.execution_trace,
         critic=final_state.critic,
     )
 
@@ -141,6 +178,7 @@ async def research_stream(query: constr(min_length=3, max_length=500), max_revis
                             "stage": stage,
                             "iteration_count": iter_count,
                             "trace": trace if isinstance(trace, list) else [],
+                            "execution_trace": state.execution_trace.model_dump(mode="json"),
                             "critic": critic_dump,
                             "ts_ms": ts_ms(),
                             "plan": state.plan.model_dump(mode="json") if state.plan is not None else None,
@@ -179,6 +217,7 @@ async def research_stream(query: constr(min_length=3, max_length=500), max_revis
                 report=report,
                 sources=sources,
                 trace=final_state.trace,
+                execution_trace=final_state.execution_trace,
                 critic=final_state.critic,
             )
 
@@ -187,3 +226,12 @@ async def research_stream(query: constr(min_length=3, max_length=500), max_revis
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+# ---- Frontend mount (place last so explicit API routes win) ----
+# Mount under /ui so it doesn't intercept API endpoints like /health, /research/*.
+# NOTE: assets are served from /assets by the mount below.
+app.mount("/ui", StaticFiles(directory="frontend/dist", html=True), name="frontend")
+
+# Serve built assets at the root (/assets/...) to match Vite's default build output.
+app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")

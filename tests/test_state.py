@@ -9,6 +9,7 @@ def test_state_dataclass_defaults() -> None:
     assert st.query == "x y z"
     assert st.plan is None
     assert st.plan_history == []
+    assert st.execution_trace.iterations == []
     assert st.search_queries == []
     assert st.searches == []
     assert st.iteration_count == 0

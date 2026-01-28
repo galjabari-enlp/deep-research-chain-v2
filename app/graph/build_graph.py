@@ -16,7 +16,17 @@ from app.services.llm import LLMClient
 from app.services.serper import SerperClient
 
 
-def _route_from_critic(state: ResearchState) -> Literal["planning", "search", "report"]:
+def _route_from_critic(state: ResearchState) -> Literal["planning", "report"]:
+    """Routing policy: replan after *every* non-satisfactory critic evaluation.
+
+    Terminal conditions:
+    - max_revisions reached -> report
+    - critic.decision == "report" -> report
+
+    Otherwise always route to planning, regardless of whether critic chose
+    "refine_search" or "replan".
+    """
+
     # Max-iterations hard stop.
     if state.iteration_count >= state.max_revisions:
         state.trace.append("Routing: max_revisions reached -> report")
@@ -32,27 +42,8 @@ def _route_from_critic(state: ResearchState) -> Literal["planning", "search", "r
         state.trace.append("Routing: critic=report -> report")
         return "report"
 
-    if decision == "replan":
-        state.trace.append("Routing: critic=replan -> planning")
-        return "planning"
-
-    # refine_search
-    if state.plan is None:
-        state.trace.append("Routing: critic=refine_search but no plan -> planning")
-        return "planning"
-
-    # Validate suggested queries against plan topics; if invalid, replan.
-    if state.critic.missing_gaps:
-        for gap in state.critic.missing_gaps:
-            if not validate_gap_query_against_plan(gap, state.plan):
-                # Critic asked for an off-plan query => plan/critic misaligned.
-                state.trace.append(
-                    f"Routing: critic gap off-plan -> planning | gap={gap.gap_id}"
-                )
-                return "planning"
-
-    state.trace.append("Routing: critic=refine_search -> search")
-    return "search"
+    state.trace.append(f"Routing: critic={decision} -> planning (always replan when not reporting)")
+    return "planning"
 
 
 def build_research_graph(*, llm: LLMClient, serper: SerperClient, fetcher: PageFetcher | None = None):
@@ -92,7 +83,6 @@ def build_research_graph(*, llm: LLMClient, serper: SerperClient, fetcher: PageF
         _route_from_critic,
         {
             "planning": "planning",
-            "search": "search",
             "report": "report_step",
         },
     )

@@ -94,5 +94,21 @@ async def reasoning_node(state: ResearchState, llm: LLMClient) -> ResearchState:
     state.reasoning_notes.extend(known)
     state.gaps = dedupe_preserve_order(state.gaps + gaps)
     state.proposed_queries = dedupe_preserve_order(queries)
+
+    from app.graph.trace_models import add_trace_item
+
+    add_trace_item(
+        state.execution_trace,
+        iteration=state.iteration_count,
+        section="reasoning",
+        label="Reasoning summary",
+        detail=("\n".join(known[:8]) if known else None),
+        data={
+            "known": known[:25],
+            "gaps": gaps[:25],
+            "proposed_queries": queries[:10],
+        },
+    )
+
     state.trace.append(f"Reasoning produced {len(known)} notes, {len(gaps)} gaps, {len(queries)} queries")
     return state

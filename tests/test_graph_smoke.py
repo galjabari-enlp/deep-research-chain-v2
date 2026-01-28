@@ -12,14 +12,20 @@ from app.graph.state import ResearchState
 class FakeLLM:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
+        self.plan_calls = 0
+        self.critic_calls = 0
 
     async def chat_json(self, *, system: str, user: str, **_: Any) -> str:
         self.calls.append((system, user))
-        if "ResearchPlan" in user:
+        # planning node includes the model schema in the user prompt; match on that.
+        if "SCHEMA" in user and "ResearchPlan" in user:
+            # (this block returns plan JSON)
+            self.plan_calls += 1
+            pv = self.plan_calls
             # minimal valid plan JSON (must satisfy Pydantic constraints)
             return (
                 "{"
-                '"plan_version": 1,'
+                f'"plan_version": {pv},'
                 '"user_query": "What is X?",'
                 '"research_objective": "Understand the concept of X and its implications using credible sources.",'
                 '"scope_inclusions": [],'
@@ -36,24 +42,50 @@ class FakeLLM:
                 '{"criterion_id":"C2","description":"At least 1 credible source mentions impacts/implications of X.","must_be_met": true}'
                 '],'
                 '"initial_search_batch": ["X definition","X overview definition","X impacts"],'
-                '"notes_for_search_agent": ""'
+                '"notes_for_search_agent": "avoid repeating these queries: X definition"'
                 "}"
             )
-        # Critic JSON: immediately report
-        return (
-            "{"
-            '"iteration": 1,'
-            '"decision": "report",'
-            '"sufficiency_score": 80,'
-            '"what_we_have": ["We have snippets."],'
-            '"evidence_quality": [],'
-            '"unmet_success_criteria": [],'
-            '"missing_gaps": [],'
-            '"plan_issues": [],'
-            '"feedback_to_planning": "",'
-            '"constraints_for_next_search": []'
-            "}"
-        )
+
+        # Critic JSON: refine_search on first iteration, then report on second.
+        # Detect critic calls by presence of "CriticAssessment" schema in the prompt.
+        if "SCHEMA" in user and "CriticAssessment" in user:
+            self.critic_calls += 1
+            if self.critic_calls == 1:
+                return (
+                    "{"
+                    '"iteration": 1,'
+                    '"decision": "refine_search",'
+                    '"sufficiency_score": 60,'
+                    '"what_we_have": ["We have some snippets."],'
+                    '"evidence_quality": [],'
+                    '"unmet_success_criteria": ["C2"],'
+                    '"missing_gaps": ['
+                    '{"gap_id":"G1","description":"Need evidence about impacts/implications.","mapped_to_success_criteria":["C2"],"severity":"important","suggested_query":"X impacts","required_source_types":[]}'
+                    '],'
+                    '"plan_issues": [],'
+                    '"feedback_to_planning": "Incorporate impacts gaps into steps and queries.",'
+                    '"constraints_for_next_search": []'
+                    "}"
+                )
+
+            return (
+                "{"
+                '"iteration": 2,'
+                '"decision": "report",'
+                '"sufficiency_score": 80,'
+                '"what_we_have": ["We have enough snippets."],'
+                '"evidence_quality": [],'
+                '"unmet_success_criteria": [],'
+                '"missing_gaps": [],'
+                '"plan_issues": [],'
+                '"feedback_to_planning": "",'
+                '"constraints_for_next_search": []'
+                "}"
+            )
+
+        # Reasoning node expects plain text, but our graph uses llm.chat_json for it.
+        # Return a minimal text with the required sections.
+        return "KNOWN:\n- We have snippets\nGAPS:\n- impacts evidence missing\nQUERIES:\n- X impacts\n"
 
 
 class FakeSerper:
@@ -92,3 +124,31 @@ async def test_graph_runs_to_report() -> None:
     assert final_state.critic.decision == "report"
     assert isinstance(final_state.report, FinalReport)
     assert final_state.searches
+
+    # New behavior: if critic is not satisfied (refine_search), we still replan.
+    assert len(final_state.plan_history) >= 2
+    assert final_state.plan_history[0].plan_version == 1
+    assert final_state.plan_history[1].plan_version == 2
+
+    # Ensure planning happened again before the second search.
+    # The trace should contain a second "Planned v2".
+    assert any(t.startswith("Planned v2") for t in final_state.trace)
+
+    # Structured execution_trace shape + collapsed defaults
+    et = final_state.execution_trace
+    assert et.iterations
+    for it in et.iterations:
+        sections = {s.section: s for s in it.sections}
+        # required sections
+        assert "plan" in sections
+        assert "search_queries" in sections
+        assert "search_results" in sections
+        assert "critic" in sections
+
+        assert sections["plan"].collapsed_by_default is False
+        assert sections["critic"].collapsed_by_default is False
+        assert sections["search_queries"].collapsed_by_default is True
+        assert sections["search_results"].collapsed_by_default is True
+        assert sections["fetch_details"].collapsed_by_default is True
+        assert sections["reasoning"].collapsed_by_default is True
+        assert sections["report"].collapsed_by_default is False

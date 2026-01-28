@@ -11,10 +11,36 @@ from app.graph import ResearchState, build_research_graph
 from app.services import LLMClient, PageFetcher, SerperClient
 
 
-def _print_report(state: ResearchState) -> None:
-    print("\n=== TRACE ===")
-    for t in state.trace:
-        print(f"- {t}")
+def _print_report(state: ResearchState, *, verbose_trace: bool, show_urls: bool) -> None:
+    # CLI can't truly collapse, but we can approximate:
+    # - default: print only non-collapsed sections (plan + critic + report)
+    # - verbose: print all sections
+
+    et = getattr(state, "execution_trace", None)
+
+    if et is not None and getattr(et, "iterations", None):
+        print("\n=== EXECUTION TRACE (sectioned) ===")
+        for it in et.iterations:
+            print(f"\n--- Iteration {it.iteration} ---")
+            for sec in it.sections:
+                if (not verbose_trace) and sec.collapsed_by_default:
+                    continue
+                print(f"\n[{sec.title}]")
+                for item in sec.items:
+                    line = f"- {item.label}"
+                    if item.detail:
+                        line += f" | {item.detail}"
+                    print(line)
+                    for link in item.links:
+                        dom = f" ({link.domain})" if link.domain else ""
+                        print(f"  - [{link.title}]{dom}")
+                        if show_urls:
+                            print(f"    {link.url}")
+    else:
+        # Back-compat fallback
+        print("\n=== TRACE ===")
+        for t in state.trace:
+            print(f"- {t}")
 
     if state.plan:
         print("\n=== PLAN (objective) ===")
@@ -46,7 +72,7 @@ def _print_report(state: ResearchState) -> None:
         print("(no report generated)")
 
 
-async def _run(query: str, max_revisions: int) -> int:
+async def _run(query: str, max_revisions: int, *, verbose_trace: bool, show_urls: bool) -> int:
     llm = LLMClient()
     serper = SerperClient()
     fetcher = PageFetcher()
@@ -58,7 +84,7 @@ async def _run(query: str, max_revisions: int) -> int:
     # LangGraph returns a dict of state keys -> values when using dataclass state.
     final_state: ResearchState = ResearchState(**out) if isinstance(out, dict) else out
 
-    _print_report(final_state)
+    _print_report(final_state, verbose_trace=verbose_trace, show_urls=show_urls)
     return 0
 
 
@@ -70,9 +96,26 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Deep Research Agent CLI")
     parser.add_argument("query", type=str, help="Research question")
     parser.add_argument("--max-revisions", type=int, default=10)
+    parser.add_argument(
+        "--verbose-trace",
+        action="store_true",
+        help="Print all trace sections (including collapsed-by-default ones).",
+    )
+    parser.add_argument(
+        "--show-urls",
+        action="store_true",
+        help="Print full URLs under each link entry.",
+    )
     args = parser.parse_args()
 
-    return asyncio.run(_run(args.query, args.max_revisions))
+    return asyncio.run(
+        _run(
+            args.query,
+            args.max_revisions,
+            verbose_trace=bool(args.verbose_trace),
+            show_urls=bool(args.show_urls),
+        )
+    )
 
 
 if __name__ == "__main__":

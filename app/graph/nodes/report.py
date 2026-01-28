@@ -61,5 +61,17 @@ async def report_node(state: ResearchState) -> ResearchState:
         evidence_and_sources=evidence or ["No sources available."],
         limitations=limitations,
     )
+
+    from app.graph.trace_models import add_trace_item, make_link
+
+    add_trace_item(
+        state.execution_trace,
+        iteration=state.iteration_count,
+        section="report",
+        label="Report generated",
+        detail=("\n".join(state.report.key_findings[:5]) if state.report else None),
+        links=[make_link(title=r.title, url=str(r.url)) for r in sources[:10]],
+    )
+
     state.trace.append("Report generated")
     return state

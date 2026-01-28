@@ -84,6 +84,25 @@ async def search_node(
             executed_this_iter += 1
             state.trace.append(f"Searched: {q} ({len(record.results)} new results)")
 
+            from app.graph.trace_models import add_trace_item, make_link
+
+            add_trace_item(
+                state.execution_trace,
+                iteration=state.iteration_count,
+                section="search_queries",
+                label=q,
+                data={"new_results": len(record.results)},
+            )
+
+            if record.results:
+                add_trace_item(
+                    state.execution_trace,
+                    iteration=state.iteration_count,
+                    section="search_results",
+                    label=f"Results for: {q}",
+                    links=[make_link(title=res.title, url=str(res.url)) for res in record.results[:10]],
+                )
+
             for res in record.results:
                 state.trace.append(f"Source considered: {res.title} | {res.url}")
 
@@ -98,12 +117,39 @@ async def search_node(
                         state.trace.append(
                             f"Fetched: {url} (status={fr.status_code}, content_type={fr.content_type})"
                         )
+
+                        from app.graph.trace_models import add_trace_item
+
+                        add_trace_item(
+                            state.execution_trace,
+                            iteration=state.iteration_count,
+                            section="fetch_details",
+                            label="Fetched",
+                            detail=str(url),
+                            data={
+                                "url": str(url),
+                                "status_code": fr.status_code,
+                                "content_type": fr.content_type,
+                            },
+                        )
+
                         if fr.status_code < 400 and (fr.content_type or "").lower().startswith("text/"):
                             state.fetched_pages[url] = extract_text_from_html(fr.text)
                         else:
                             state.fetched_pages[url] = ""
                     except FetchError as e:
                         state.trace.append(f"Fetch error: {url} ({e})")
+
+                        from app.graph.trace_models import add_trace_item
+
+                        add_trace_item(
+                            state.execution_trace,
+                            iteration=state.iteration_count,
+                            section="fetch_details",
+                            label="Fetch error",
+                            detail=str(url),
+                            data={"url": str(url), "error": str(e)},
+                        )
         except SerperError as e:
             logger.warning("Serper search failed for '%s': %s", q, e)
             state.trace.append(f"Serper error for '{q}': {e}")

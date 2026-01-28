@@ -26,10 +26,26 @@ class LLMClient:
         temperature: float | None = None,
         timeout_s: float | None = None,
     ) -> None:
+        resolved_api_key = api_key or settings.openai_api_key
+        resolved_base_url = base_url or settings.openai_base_url or None
+        resolved_timeout = timeout_s or settings.llm_timeout_s
+
+        # Debugging: validate config resolution without leaking secrets.
+        key_len = len(resolved_api_key or "")
+        key_tail = (resolved_api_key or "")[-4:] if key_len >= 4 else ""
+        logger.info(
+            "LLMClient configured model=%r base_url=%r api_key_len=%s api_key_tail=%r timeout_s=%s",
+            model or settings.openai_model,
+            resolved_base_url,
+            key_len,
+            key_tail,
+            resolved_timeout,
+        )
+
         self._client = AsyncOpenAI(
-            api_key=api_key or settings.openai_api_key,
-            base_url=base_url or settings.openai_base_url or None,
-            timeout=timeout_s or settings.llm_timeout_s,
+            api_key=resolved_api_key,
+            base_url=resolved_base_url,
+            timeout=resolved_timeout,
         )
         self._model = model or settings.openai_model
         self._temperature = settings.llm_temperature if temperature is None else temperature

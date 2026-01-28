@@ -116,6 +116,24 @@ async def critic_node(state: ResearchState, llm: LLMClient) -> ResearchState:
 
     state.critic = critic
     state.critic_history.append(critic)
+
+    from app.graph.trace_models import add_trace_item
+
+    add_trace_item(
+        state.execution_trace,
+        iteration=state.iteration_count,
+        section="critic",
+        label=f"Decision: {critic.decision} (score={critic.sufficiency_score})",
+        detail=(critic.feedback_to_planning or None),
+        data={
+            "decision": critic.decision,
+            "sufficiency_score": critic.sufficiency_score,
+            "unmet_success_criteria": list(critic.unmet_success_criteria),
+            "missing_gaps": [g.model_dump(mode="json") for g in critic.missing_gaps],
+            "constraints_for_next_search": list(critic.constraints_for_next_search),
+        },
+    )
+
     state.trace.append(f"Critic decision: {critic.decision} (score={critic.sufficiency_score})")
 
     # Log what the critic thought about individual URLs.

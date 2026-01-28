@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -32,3 +36,18 @@ class Settings(BaseSettings):
 
 # This reads from .env and/or process environment.
 settings = Settings()
+
+# Debugging: confirm env/.env settings resolution at import time (no secret leakage).
+_key_len = len(settings.openai_api_key or "")
+_key_tail = (settings.openai_api_key or "")[-4:] if _key_len >= 4 else ""
+logger.info(
+    "Settings loaded openai_model=%r openai_base_url=%r openai_api_key_len=%s openai_api_key_tail=%r",
+    settings.openai_model,
+    settings.openai_base_url or None,
+    _key_len,
+    _key_tail,
+)
+logger.info(
+    "Settings loaded serper_api_key_len=%s",
+    len(settings.serper_api_key or ""),
+)

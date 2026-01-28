@@ -5,6 +5,8 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, HttpUrl, conint, constr
 
+from app.graph.trace_models import ExecutionTrace
+
 
 # --- Planning schema (MUST IMPLEMENT) ---
 
@@ -188,6 +190,9 @@ class ResearchResponse(BaseModel):
     report: FinalReport
     sources: List[SearchResult] = Field(default_factory=list)
     trace: List[str] = Field(default_factory=list)
+
+    # Structured, sectioned execution trace (preferred by frontend)
+    execution_trace: ExecutionTrace = Field(default_factory=lambda: ExecutionTrace())
 
     # UI helpers (optional)
     critic: Optional[CriticAssessment] = None

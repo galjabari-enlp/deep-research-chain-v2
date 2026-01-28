@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+from app.graph.trace_models import ExecutionTrace
+
 from .models import (
     CriticAssessment,
     FinalReport,
@@ -19,6 +21,13 @@ class ResearchState:
     # Planning
     plan: Optional[ResearchPlan] = None
     plan_history: List[ResearchPlan] = field(default_factory=list)
+
+    # Structured execution trace (iteration -> sections -> items)
+    execution_trace: "ExecutionTrace" = field(default_factory=lambda: ExecutionTrace())
+
+    # Map each critic iteration -> plan_version used for the subsequent search.
+    # This helps test/diagnose replanning behavior.
+    iteration_plan_versions: Dict[int, int] = field(default_factory=dict)
 
     # Search
     search_queries: List[str] = field(default_factory=list)
