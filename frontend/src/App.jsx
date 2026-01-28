@@ -405,13 +405,16 @@ export default function App() {
 
       setStage('report_step')
 
-      const summary = (finalData.report && finalData.report.key_findings && finalData.report.key_findings[0]) || 'Research complete.'
+      // When the run completes, show the final report in the chat as well (rich rendering).
+      const blocks = (finalData.report && Array.isArray(finalData.report.blocks) && finalData.report.blocks) || []
+
       setMessages((prev) =>
         prev.map((m) =>
           m.id === agentRunId
             ? {
                 ...m,
-                text: summary,
+                text: 'Final report ready.',
+                reportBlocks: blocks,
                 statusText: 'Done.',
               }
             : m,
@@ -471,7 +474,22 @@ export default function App() {
 
   const parsedTrace = useMemo(() => computeTrace(traceLines), [traceLines])
 
+  // When Final Report becomes available, move it into view.
+  useEffect(() => {
+    const hasBlocks = Array.isArray(report?.blocks) && report.blocks.length > 0
+    const hasLegacy = Array.isArray(report?.key_findings) && report.key_findings.length > 0
+    if (!hasBlocks && !hasLegacy) return
+
+    window.setTimeout(() => {
+      const el = document.getElementById('finalReportSection')
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      }
+    }, 50)
+  }, [report])
+
   // Evidence list badges: map url -> index (1-based)
+  // (Used by legacy report rendering; blocks UI uses explicit citation ids.)
   const urlToSourceIndex = useMemo(() => {
     const m = new Map()
     ;(sources || []).forEach((s, i) => {
@@ -479,6 +497,7 @@ export default function App() {
     })
     return m
   }, [sources])
+  void urlToSourceIndex
 
   // Legacy flags (no longer used since ChatPanel drives Send)
   // const sendDisabled = statusMode === 'working'
@@ -1018,109 +1037,83 @@ export default function App() {
               </div>
             </div>
 
-            {/* Sources Table */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-[#92adc9] uppercase tracking-widest">Sources</h3>
-                <span
-                  id="sourcesCount"
-                  className="text-[11px] bg-[#111a22] px-2 py-0.5 rounded border border-[#324d67] text-[#92adc9]"
-                >
-                  {sources.length} result{sources.length === 1 ? '' : 's'}
-                </span>
-              </div>
-              <div className="bg-[#1a2632] border border-[#233648] rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-[#111a22] text-[#92adc9] font-bold uppercase">
-                    <tr>
-                      <th className="px-4 py-3">Source Title</th>
-                      <th className="px-4 py-3">Domain</th>
-                      <th className="px-4 py-3 text-right">URL</th>
-                    </tr>
-                  </thead>
-                  <tbody id="sourcesBody" className="divide-y divide-[#233648]">
-                    {sources.map((s, idx) => {
-                      const url = s.url || ''
-                      const domain = url ? safeHostname(url) : ''
-                      const title = s.title || ''
-                      return (
-                        <tr key={idx} className="hover:bg-[#233648]/30 transition-colors">
-                          <td className="px-4 py-3 font-medium truncate max-w-[220px]" title={title}>
-                            {title}
-                          </td>
-                          <td className="px-4 py-3 text-[#92adc9]">{domain}</td>
-                          <td className="px-4 py-3 text-right">
-                            <a className="text-primary hover:underline" href={url} target="_blank" rel="noreferrer">
-                              open
-                            </a>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Final Report */}
-            <div className="space-y-4">
+            {/* Final Report (moved above Sources; highest priority) */}
+            <div className="space-y-4" id="finalReportSection">
               <h3 className="text-xs font-bold text-[#92adc9] uppercase tracking-widest">Final Report</h3>
               <div className="border border-[#233648] rounded-xl bg-[#111a22] p-4">
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-[11px] text-[#92adc9] font-bold uppercase">Key findings</div>
-                    <ul id="reportFindings" className="mt-2 text-sm space-y-2">
-                      {(report?.key_findings || []).map((raw, idx) => {
-                        const text = String(raw || '').trim()
-                        if (!text) return null
-                        const m = text.match(/^\*\*(.+?)\*\*:\s*(.+)$/)
-                        return (
-                          <li key={idx} className="rounded-lg border border-[#233648] bg-[#1a2632] px-3 py-2">
-                            {m ? (
-                              <>
-                                <div className="text-xs font-bold text-primary">{m[1].trim()}</div>
-                                <div className="text-sm text-white/90 mt-1 leading-relaxed">{m[2].trim()}</div>
-                              </>
-                            ) : (
-                              <div className="text-sm text-white/90 leading-relaxed">{text}</div>
-                            )}
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-[#92adc9] font-bold uppercase">Evidence & sources</div>
-                    <ul id="reportEvidence" className="mt-2 text-sm space-y-2">
-                      {(report?.evidence_and_sources || []).map((item, idx) => {
-                        const s = String(item || '')
-                        const m = s.match(/\((https?:\/\/[^\s)]+)\)\s*$/)
-                        const url = m ? m[1] : null
-                        const text = url ? s.replace(/\s*\((https?:\/\/[^\s)]+)\)\s*$/, '') : s
-                        const sourceIdx = url ? urlToSourceIndex.get(url) || '' : ''
-                        const domain = url ? safeHostname(url) : ''
+                <div className="space-y-5">
+                  {/* New block-based report rendering with per-paragraph citations */}
+                  {Array.isArray(report?.blocks) && report.blocks.length > 0 ? (
+                    <div className="space-y-4">
+                      {report.blocks.map((b) => {
+                        const heading = String(b?.heading || '').trim()
+                        const text = String(b?.text || '').trim()
+                        if (!heading && !text) return null
+                        const citations = Array.isArray(b?.citations) ? b.citations : []
 
                         return (
-                          <li key={idx} className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm leading-relaxed">{text}</p>
-                            </div>
-                            {url ? (
-                              <a
-                                href={url}
-                                target="_blank"
-                                rel="noreferrer"
-                                title={domain || url}
-                                className="shrink-0 w-7 h-7 rounded-full bg-[#233648] border border-[#324d67] text-[#92adc9] flex items-center justify-center text-[10px] font-bold hover:border-primary hover:text-white hover:bg-primary/20 transition-colors"
-                              >
-                                {sourceIdx ? String(sourceIdx) : '↗'}
-                              </a>
+                          <div key={String(b.id || (heading || text).slice(0, 16))} className="space-y-2">
+                            {heading ? <div className="text-xs font-bold text-primary">{heading}</div> : null}
+                            {text ? (
+                              <p className="text-sm text-white/90 leading-relaxed">{text.replace(/^\*\*[^*]{1,120}\*\*:\s*/, '')}</p>
                             ) : null}
-                          </li>
+                            {citations.length ? (
+                              <div className="flex flex-wrap gap-2">
+                                {citations.map((c) => {
+                                  const url = c?.url
+                                  const label = String(c?.id || '').trim() || '↗'
+                                  const title = String(c?.title || '')
+                                  const domain = url ? safeHostname(String(url)) : ''
+                                  const tooltip = [title, domain].filter(Boolean).join(' • ') || String(url || '')
+                                  const href = url ? String(url) : null
+
+                                  return href ? (
+                                    <a
+                                      key={String(c?.id || href)}
+                                      href={href}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      title={tooltip}
+                                      className="shrink-0 w-7 h-7 rounded-full bg-[#233648] border border-[#324d67] text-[#92adc9] flex items-center justify-center text-[10px] font-bold hover:border-primary hover:text-white hover:bg-primary/20 transition-colors"
+                                    >
+                                      {label}
+                                    </a>
+                                  ) : null
+                                })}
+                              </div>
+                            ) : null}
+                          </div>
                         )
                       })}
-                    </ul>
-                  </div>
+                    </div>
+                  ) : (
+                    // Legacy fallback
+                    <div className="space-y-3">
+                      <div>
+                        <div className="text-[11px] text-[#92adc9] font-bold uppercase">Key findings</div>
+                        <ul id="reportFindings" className="mt-2 text-sm space-y-2">
+                          {(report?.key_findings || []).map((raw, idx) => {
+                            const text = String(raw || '').trim()
+                            if (!text) return null
+                            const m = text.match(/^\*\*(.+?)\*\*:\s*(.+)$/)
+                            return (
+                              <li key={idx} className="rounded-lg border border-[#233648] bg-[#1a2632] px-3 py-2">
+                                {m ? (
+                                  <>
+                                    <div className="text-xs font-bold text-primary">{m[1].trim()}</div>
+                                    <div className="text-sm text-white/90 mt-1 leading-relaxed">{m[2].trim()}</div>
+                                  </>
+                                ) : (
+                                  <div className="text-sm text-white/90 leading-relaxed">{text}</div>
+                                )}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <div className="text-[11px] text-[#92adc9] font-bold uppercase">Limitations</div>
                     <ul id="reportLimitations" className="mt-2 text-sm space-y-1">
@@ -1132,6 +1125,52 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            {/* Sources Table (hidden by default; only show when report has no blocks) */}
+            {Array.isArray(report?.blocks) && report.blocks.length > 0 ? null : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-[#92adc9] uppercase tracking-widest">Sources</h3>
+                  <span
+                    id="sourcesCount"
+                    className="text-[11px] bg-[#111a22] px-2 py-0.5 rounded border border-[#324d67] text-[#92adc9]"
+                  >
+                    {sources.length} result{sources.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <div className="bg-[#1a2632] border border-[#233648] rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#111a22] text-[#92adc9] font-bold uppercase">
+                      <tr>
+                        <th className="px-4 py-3">Source Title</th>
+                        <th className="px-4 py-3">Domain</th>
+                        <th className="px-4 py-3 text-right">URL</th>
+                      </tr>
+                    </thead>
+                    <tbody id="sourcesBody" className="divide-y divide-[#233648]">
+                      {sources.map((s, idx) => {
+                        const url = s.url || ''
+                        const domain = url ? safeHostname(url) : ''
+                        const title = s.title || ''
+                        return (
+                          <tr key={idx} className="hover:bg-[#233648]/30 transition-colors">
+                            <td className="px-4 py-3 font-medium truncate max-w-[220px]" title={title}>
+                              {title}
+                            </td>
+                            <td className="px-4 py-3 text-[#92adc9]">{domain}</td>
+                            <td className="px-4 py-3 text-right">
+                              <a className="text-primary hover:underline" href={url} target="_blank" rel="noreferrer">
+                                open
+                              </a>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* Errors */}
             <div

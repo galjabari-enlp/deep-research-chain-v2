@@ -151,6 +151,61 @@
   backdrop-filter: blur(10px);
 }
 
+.reportBubble {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reportBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reportHeading {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--cp-primary);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.reportText {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.reportCitations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.citationChip {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(35, 54, 72, 0.9);
+  border: 1px solid rgba(50, 77, 103, 0.9);
+  color: rgba(146, 173, 201, 0.95);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.citationChip:hover {
+  border-color: rgba(30, 136, 255, 0.6);
+  color: white;
+  background: rgba(30, 136, 255, 0.15);
+}
+
 .bubbleText {
   white-space: pre-wrap;
   word-break: break-word;

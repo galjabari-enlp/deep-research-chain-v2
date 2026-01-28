@@ -177,10 +177,27 @@ class SearchQueryRecord(BaseModel):
     results: List[SearchResult] = Field(default_factory=list)
 
 
+class ReportCitation(BaseModel):
+    id: str = Field(..., min_length=1, max_length=80)
+    url: HttpUrl
+    title: str = Field(default="", max_length=300)
+
+
+class ReportBlock(BaseModel):
+    id: str = Field(..., min_length=1, max_length=80)
+    heading: str = Field(default="", max_length=120)
+    text: str = Field(..., min_length=1, max_length=4000)
+    citations: List[ReportCitation] = Field(default_factory=list, max_length=12)
+
+
 class FinalReport(BaseModel):
+    # Backwards-compatible fields (legacy UI)
     key_findings: List[str] = Field(default_factory=list)
     evidence_and_sources: List[str] = Field(default_factory=list)
     limitations: List[str] = Field(default_factory=list)
+
+    # New UI contract: paragraph blocks with per-block citations
+    blocks: List[ReportBlock] = Field(default_factory=list, max_length=40)
 
 
 class ResearchResponse(BaseModel):

@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef } from 'react'
 import styles from './ChatPanel.module.css'
 
 /**
+ * @typedef {{ id: string; url: string; title?: string }} Citation
+ * @typedef {{ id: string; heading?: string; text: string; citations: Citation[] }} ReportBlock
+ *
  * @typedef {(
  *   | { id: string; role: 'user'; text: string }
- *   | { id: string; role: 'agent'; text: string; statusText?: string }
+ *   | { id: string; role: 'agent'; text: string; statusText?: string; reportBlocks?: ReportBlock[] }
  * )} Message
  */
 
@@ -110,9 +113,50 @@ export default function ChatPanel({
                     <div className={styles.bubbleText}>{m.text}</div>
                   </div>
                 ) : (
-                  <div className={styles.agentBubble}>
-                    <div className={styles.bubbleText}>{m.text}</div>
-                    {m.statusText ? (
+                   <div className={styles.agentBubble}>
+                     {Array.isArray(m.reportBlocks) && m.reportBlocks.length > 0 ? (
+                       <div className={styles.reportBubble}>
+                         {m.reportBlocks.map((b) => {
+                           const heading = String(b?.heading || '').trim()
+                           const text = String(b?.text || '').trim()
+                           const citations = Array.isArray(b?.citations) ? b.citations : []
+                           if (!heading && !text) return null
+
+                           return (
+                             <div key={String(b?.id || (heading || text).slice(0, 16))} className={styles.reportBlock}>
+                               {heading ? <div className={styles.reportHeading}>{heading}</div> : null}
+                               {text ? <div className={styles.reportText}>{text}</div> : null}
+                               {citations.length ? (
+                                 <div className={styles.reportCitations}>
+                                   {citations.map((c) => {
+                                     const url = String(c?.url || '').trim()
+                                     if (!url) return null
+                                     const label = String(c?.id || '').trim() || '↗'
+                                     const title = String(c?.title || '')
+                                     return (
+                                       <a
+                                         key={String(c?.id || url)}
+                                         className={styles.citationChip}
+                                         href={url}
+                                         target="_blank"
+                                         rel="noreferrer"
+                                         title={title || url}
+                                       >
+                                         {label}
+                                       </a>
+                                     )
+                                   })}
+                                 </div>
+                               ) : null}
+                             </div>
+                           )
+                         })}
+                       </div>
+                     ) : (
+                       <div className={styles.bubbleText}>{m.text}</div>
+                     )}
+
+                     {m.statusText ? (
                       <div className={styles.agentStatusRow}>
                         <div className={styles.statusIcon} aria-hidden="true">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -149,7 +193,11 @@ export default function ChatPanel({
             onChange={(e) => onDraftChange(e.target.value)}
             rows={3}
             onKeyDown={(e) => {
-              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') onSend()
+              // Enter sends; Shift+Enter inserts newline.
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                if ((draft || '').trim().length > 0 && statusMode !== 'working') onSend()
+              }
             }}
           />
         </div>
