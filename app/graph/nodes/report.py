@@ -87,7 +87,7 @@ async def report_node(state: ResearchState) -> ResearchState:
             "  ]\n"
             "}\n"
             "Rules:\n"
-            "- 'heading' must be short (2-6 words) and must not be markdown.\n"
+            "- Each block must include 'heading' (2-6 words) for the sub-section title; no markdown, no trailing colon.\n"
             "- 'text' must be plain prose without leading labels like '**Something**:'\n"
             "- Do not use markdown headings.\n"
             "- Each citation id must correspond to one of the provided sources.\n"
