@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are a strict research critic. You must ensure the agent does not stray from the plan. "
+    "Primary language: match the user's language in ALL descriptive fields (gaps, reasons, feedback). "
+    "If evidence is insufficient due to language coverage, you MAY suggest English search queries as missing_gaps[*].suggested_query, "
+    "but the missing_gaps[*].description must remain in the user's language and must explain that the query is an English translation for broader coverage. "
     "Be extremely concise and obey field length limits. "
     "Hard limits: MissingGap.description <= 220 chars; EvidenceQuality.reasons entries <= 180 chars; "
     "PlanIssue fields <= 220 chars; feedback_to_planning <= 600 chars. "
@@ -34,12 +37,21 @@ def _critic_user_prompt(state: ResearchState) -> str:
         for r in s.results[:5]:
             sources.append({"title": r.title, "url": str(r.url), "snippet": r.snippet})
 
+    fetched = []
+    if getattr(state, "fetched_pages", None):
+        for url, text in list(state.fetched_pages.items())[:6]:
+            excerpt = (text or "").strip()
+            if len(excerpt) > 400:
+                excerpt = excerpt[:400] + "…"
+            fetched.append({"url": url, "excerpt": excerpt})
+
     return (
         f"Iteration: {state.iteration_count}\n"
         f"User query: {sanitize_for_prompt(state.query)}\n"
         f"Plan topics (do not stray): {plan_all_topics(state.plan)}\n"
         f"Success criteria: {[c.criterion_id + ': ' + c.description for c in state.plan.success_criteria]}\n\n"
         f"What we have (recent sources/snippets): {sources}\n\n"
+        f"Fetched page excerpts (may be empty): {fetched}\n\n"
         "Assess sufficiency, evidence quality, and gaps vs success criteria.\n\n"
         "IMPORTANT OUTPUT RULES (must follow):\n"
         "- Return ONLY JSON. No extra keys.\n"
@@ -105,5 +117,11 @@ async def critic_node(state: ResearchState, llm: LLMClient) -> ResearchState:
     state.critic = critic
     state.critic_history.append(critic)
     state.trace.append(f"Critic decision: {critic.decision} (score={critic.sufficiency_score})")
+
+    # Log what the critic thought about individual URLs.
+    for eq in critic.evidence_quality:
+        rs = "; ".join(eq.reasons[:3])
+        state.trace.append(f"Critic evidence: {eq.quality} | {eq.title} | {eq.url} | {rs}")
+
     logger.info("Critic decision=%s score=%s", critic.decision, critic.sufficiency_score)
     return state

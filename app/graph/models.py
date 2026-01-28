@@ -188,3 +188,6 @@ class ResearchResponse(BaseModel):
     report: FinalReport
     sources: List[SearchResult] = Field(default_factory=list)
     trace: List[str] = Field(default_factory=list)
+
+    # UI helpers (optional)
+    critic: Optional[CriticAssessment] = None

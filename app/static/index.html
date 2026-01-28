@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Deep Research Agent</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+      rel="stylesheet"
+    />
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: "#137fec",
+              "background-light": "#f6f7f8",
+              "background-dark": "#101922",
+            },
+            fontFamily: {
+              display: ["Inter", "sans-serif"],
+            },
+            borderRadius: {
+              DEFAULT: "0.25rem",
+              lg: "0.5rem",
+              xl: "0.75rem",
+              full: "9999px",
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+      }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #324d67;
+        border-radius: 10px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #4a6b8a;
+      }
+      @keyframes pulse-opacity {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+      .animate-pulse-slow {
+        animation: pulse-opacity 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+    </style>
+  </head>
+  <body class="bg-background-light dark:bg-background-dark text-white font-display overflow-hidden h-screen flex flex-col">
+    <!-- Top Navigation Bar -->
+    <header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#233648] px-6 py-3 shrink-0 bg-background-dark">
+      <div class="flex items-center gap-4 text-white">
+        <div class="size-6 text-primary">
+          <svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M39.5563 34.1455V13.8546C39.5563 15.708 36.8773 17.3437 32.7927 18.3189C30.2914 18.916 27.263 19.2655 24 19.2655C20.737 19.2655 17.7086 18.916 15.2073 18.3189C11.1227 17.3437 8.44365 15.708 8.44365 13.8546V34.1455C8.44365 35.9988 11.1227 37.6346 15.2073 38.6098C17.7086 39.2069 20.737 39.5564 24 39.5564C27.263 39.5564 30.2914 39.2069 32.7927 38.6098C36.8773 37.6346 39.5563 35.9988 39.5563 34.1455Z"
+              fill="currentColor"
+            ></path>
+            <path
+              clip-rule="evenodd"
+              d="M10.4485 13.8519C10.4749 13.9271 10.6203 14.246 11.379 14.7361C12.298 15.3298 13.7492 15.9145 15.6717 16.3735C18.0007 16.9296 20.8712 17.2655 24 17.2655C27.1288 17.2655 29.9993 16.9296 32.3283 16.3735C34.2508 15.9145 35.702 15.3298 36.621 14.7361C37.3796 14.246 37.5251 13.9271 37.5515 13.8519C37.5287 13.7876 37.4333 13.5973 37.0635 13.2931C36.5266 12.8516 35.6288 12.3647 34.343 11.9175C31.79 11.0295 28.1333 10.4437 24 10.4437C19.8667 10.4437 16.2099 11.0295 13.657 11.9175C12.3712 12.3647 11.4734 12.8516 10.9365 13.2931C10.5667 13.5973 10.4713 13.7876 10.4485 13.8519ZM37.5563 18.7877C36.3176 19.3925 34.8502 19.8839 33.2571 20.2642C30.5836 20.9025 27.3973 21.2655 24 21.2655C20.6027 21.2655 17.4164 20.9025 14.7429 20.2642C13.1498 19.8839 11.6824 19.3925 10.4436 18.7877V34.1275C10.4515 34.1545 10.5427 34.4867 11.379 35.027C12.298 35.6207 13.7492 36.2054 15.6717 36.6644C18.0007 37.2205 20.8712 37.5564 24 37.5564C27.1288 37.5564 29.9993 37.2205 32.3283 36.6644C34.2508 36.2054 35.702 35.6207 36.621 35.027C37.4573 34.4867 37.5485 34.1546 37.5563 34.1275V18.7877ZM41.5563 13.8546V34.1455C41.5563 36.1078 40.158 37.5042 38.7915 38.3869C37.3498 39.3182 35.4192 40.0389 33.2571 40.5551C30.5836 41.1934 27.3973 41.5564 24 41.5564C20.6027 41.5564 17.4164 41.1934 14.7429 40.5551C12.5808 40.0389 10.6502 39.3182 9.20848 38.3869C7.84205 37.5042 6.44365 36.1078 6.44365 34.1455L6.44365 13.8546C6.44365 12.2684 7.37223 11.0454 8.39581 10.2036C9.43325 9.3505 10.8137 8.67141 12.343 8.13948C15.4203 7.06909 19.5418 6.44366 24 6.44366C28.4582 6.44366 32.5797 7.06909 35.657 8.13948C37.1863 8.67141 38.5667 9.3505 39.6042 10.2036C40.6278 11.0454 41.5563 12.2684 41.5563 13.8546Z"
+              fill="currentColor"
+              fill-rule="evenodd"
+            ></path>
+          </svg>
+        </div>
+        <h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em]">Deep Research Agent</h2>
+        <div id="conn-badge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20">
+          <div id="conn-dot" class="size-2 rounded-full bg-amber-500"></div>
+          <span id="conn-text" class="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Checking…</span>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <button class="flex items-center justify-center rounded-lg h-9 w-9 bg-[#233648] text-white hover:bg-primary/20 transition-colors" title="Settings (not wired)">
+          <span class="material-symbols-outlined text-[20px]">settings</span>
+        </button>
+        <button class="flex items-center justify-center rounded-lg h-9 w-9 bg-[#233648] text-white hover:bg-primary/20 transition-colors" title="Profile (not wired)">
+          <span class="material-symbols-outlined text-[20px]">person</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="flex flex-1 overflow-hidden">
+      <!-- Left Panel: Chat Interface -->
+      <section class="w-1/2 flex flex-col border-r border-[#233648] bg-background-dark/50">
+        <!-- Message Area -->
+        <div id="messages" class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6"></div>
+
+        <!-- Chat Composer -->
+        <div class="p-4 bg-[#111a22] border-t border-[#233648]">
+          <div class="bg-[#1a2632] border border-[#324d67] rounded-xl p-3 focus-within:border-primary/50 transition-colors">
+            <textarea
+              id="query"
+              class="w-full bg-transparent border-none focus:ring-0 text-sm text-white placeholder-[#92adc9] resize-none custom-scrollbar"
+              placeholder="Ask a follow-up or refine the research..."
+              rows="3"
+            ></textarea>
+            <div class="flex items-center justify-between mt-2 pt-2 border-t border-[#324d67]">
+              <div class="flex gap-3 items-center">
+                <div class="flex items-center gap-2">
+                  <label class="text-[11px] font-bold text-[#92adc9] uppercase">Max Revisions</label>
+                  <select id="maxRevisions" class="bg-[#233648] border-none text-[12px] rounded h-7 py-0 px-2 text-white focus:ring-1 focus:ring-primary">
+                    <option>1</option>
+                    <option>3</option>
+                    <option selected>10</option>
+                  </select>
+                </div>
+                <button
+                  id="clearBtn"
+                  type="button"
+                  class="text-[#92adc9] hover:text-white transition-colors flex items-center gap-1 text-[11px] font-bold uppercase"
+                >
+                  <span class="material-symbols-outlined text-[16px]">delete</span>
+                  Clear
+                </button>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  id="stopBtn"
+                  type="button"
+                  class="hidden bg-[#233648] hover:bg-[#324d67] text-white font-bold py-1.5 px-3 rounded-lg text-sm flex items-center gap-2 transition-all"
+                >
+                  <span class="material-symbols-outlined text-[18px]">stop_circle</span>
+                  <span>Stop</span>
+                </button>
+                <button
+                  id="sendBtn"
+                  type="button"
+                  class="bg-primary hover:bg-primary/90 text-white font-bold py-1.5 px-4 rounded-lg text-sm flex items-center gap-2 transition-all"
+                >
+                  <span>Send</span>
+                  <span class="material-symbols-outlined text-[18px]">send</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Panel: Dashboard -->
+      <section class="w-1/2 flex flex-col bg-background-dark custom-scrollbar overflow-y-auto">
+        <!-- Sticky Dashboard Header -->
+        <div class="sticky top-0 z-10 bg-background-dark/95 backdrop-blur-md border-b border-[#233648] p-4 flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <div id="statusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#233648] border border-[#324d67]">
+              <span id="statusIcon" class="material-symbols-outlined text-[#92adc9] text-[18px]">progress_activity</span>
+              <span id="statusText" class="text-xs font-bold text-[#92adc9] uppercase tracking-widest">Idle</span>
+            </div>
+            <div class="h-6 w-px bg-[#233648]"></div>
+            <div class="flex flex-col">
+              <span class="text-[10px] text-[#92adc9] font-bold uppercase">Iteration</span>
+              <span id="iterText" class="text-sm font-bold text-white">0 / 0</span>
+            </div>
+            <div class="flex flex-col ml-4">
+              <span class="text-[10px] text-[#92adc9] font-bold uppercase">Elapsed</span>
+              <span id="elapsedText" class="text-sm font-mono text-white">00:00:00</span>
+            </div>
+          </div>
+          <button id="exportBtn" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#233648] text-white hover:bg-[#324d67] text-xs font-bold transition-colors">
+            <span class="material-symbols-outlined text-[18px]">download</span>
+            Export Data
+          </button>
+        </div>
+
+        <!-- Execution Timeline -->
+        <div class="px-6 pt-6">
+          <h3 class="text-xs font-bold text-[#92adc9] uppercase tracking-widest">Execution Timeline</h3>
+          <div class="grid grid-cols-4 gap-3 mt-4">
+            <div id="card-planning" class="bg-[#1a2632] border border-[#233648] rounded-lg p-3 relative opacity-70">
+              <div id="check-planning" class="hidden absolute top-2 right-2 text-green-500">
+                <span class="material-symbols-outlined text-[16px]">check_circle</span>
+              </div>
+              <span class="text-[10px] text-[#92adc9] font-bold uppercase">Stage 1</span>
+              <p class="text-sm font-bold mt-1">Plan</p>
+              <div class="mt-3 h-1 w-full bg-[#233648] rounded-full overflow-hidden">
+                <div id="bar-planning" class="h-full bg-primary w-0"></div>
+              </div>
+              <p id="sub-planning" class="text-[11px] text-[#92adc9] mt-2">—</p>
+            </div>
+            <div id="card-search" class="bg-[#1a2632] border border-[#233648] rounded-lg p-3 relative opacity-70">
+              <div id="check-search" class="hidden absolute top-2 right-2 text-green-500">
+                <span class="material-symbols-outlined text-[16px]">check_circle</span>
+              </div>
+              <span class="text-[10px] text-[#92adc9] font-bold uppercase">Stage 2</span>
+              <p class="text-sm font-bold mt-1">Search</p>
+              <div class="mt-3 h-1 w-full bg-[#233648] rounded-full overflow-hidden">
+                <div id="bar-search" class="h-full bg-primary w-0"></div>
+              </div>
+            </div>
+            <div id="card-critic" class="bg-[#1a2632] border border-[#233648] rounded-lg p-3 relative opacity-70">
+              <div id="check-critic" class="hidden absolute top-2 right-2 text-green-500">
+                <span class="material-symbols-outlined text-[16px]">check_circle</span>
+              </div>
+              <span class="text-[10px] text-[#92adc9] font-bold uppercase">Stage 3</span>
+              <p class="text-sm font-bold mt-1">Critic</p>
+              <div class="mt-3 h-1 w-full bg-[#233648] rounded-full overflow-hidden">
+                <div id="bar-critic" class="h-full bg-primary w-0"></div>
+              </div>
+              <p id="sub-critic" class="text-[11px] text-[#92adc9] mt-2">—</p>
+            </div>
+            <div id="card-report" class="bg-[#1a2632] border border-[#233648] rounded-lg p-3 relative opacity-70">
+              <div id="check-report" class="hidden absolute top-2 right-2 text-green-500">
+                <span class="material-symbols-outlined text-[16px]">check_circle</span>
+              </div>
+              <span class="text-[10px] text-[#92adc9] font-bold uppercase">Stage 4</span>
+              <p class="text-sm font-bold mt-1">Report</p>
+              <p id="sub-report" class="text-[11px] text-[#92adc9] mt-2">—</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-6 space-y-8">
+          <!-- Critic Snapshot -->
+          <div class="space-y-4">
+            <h3 class="text-xs font-bold text-[#92adc9] uppercase tracking-widest">Critic Snapshot</h3>
+            <div class="bg-[#1a2632] border border-[#233648] rounded-xl p-4 flex items-center justify-between">
+              <div class="flex items-center gap-4">
+                <div class="flex flex-col">
+                  <span class="text-[10px] text-[#92adc9] font-bold uppercase">Latest Critic Action</span>
+                  <div id="criticDecision" class="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#111a22] border border-[#324d67] text-[#92adc9] font-mono text-xs">
+                    —
+                  </div>
+                </div>
+                <div class="h-8 w-px bg-[#324d67]"></div>
+                <div class="flex flex-col w-56">
+                  <div class="flex items-center justify-between text-[10px] font-bold uppercase mb-1">
+                    <span class="text-[#92adc9]">Sufficiency Score</span>
+                    <span id="criticScoreText" class="text-primary">—</span>
+                  </div>
+                  <div class="h-1.5 w-full bg-[#111a22] rounded-full">
+                    <div id="criticScoreBar" class="h-full bg-primary rounded-full" style="width: 0%"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex flex-col items-end">
+                <span class="text-[10px] text-[#92adc9] font-bold uppercase">Missing Info</span>
+                <ul id="missingInfo" class="text-[11px] text-white/80 text-right mt-1"></ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Trace / Timeline -->
+          <div class="space-y-4">
+            <h3 class="text-xs font-bold text-[#92adc9] uppercase tracking-widest">Execution Trace</h3>
+            <div class="bg-[#1a2632] border border-[#233648] rounded-xl p-4">
+              <ul id="traceList" class="space-y-2 text-xs text-white/90"></ul>
+            </div>
+          </div>
+
+          <!-- Sources Table -->
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold text-[#92adc9] uppercase tracking-widest">Sources</h3>
+              <span id="sourcesCount" class="text-[11px] bg-[#111a22] px-2 py-0.5 rounded border border-[#324d67] text-[#92adc9]">0 results</span>
+            </div>
+            <div class="bg-[#1a2632] border border-[#233648] rounded-xl overflow-hidden">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-[#111a22] text-[#92adc9] font-bold uppercase">
+                  <tr>
+                    <th class="px-4 py-3">Source Title</th>
+                    <th class="px-4 py-3">Domain</th>
+                    <th class="px-4 py-3 text-right">URL</th>
+                  </tr>
+                </thead>
+                <tbody id="sourcesBody" class="divide-y divide-[#233648]"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Final Report -->
+          <div class="space-y-4">
+            <h3 class="text-xs font-bold text-[#92adc9] uppercase tracking-widest">Final Report</h3>
+            <div class="border border-[#233648] rounded-xl bg-[#111a22] p-4">
+              <div class="space-y-3">
+                <div>
+                  <div class="text-[11px] text-[#92adc9] font-bold uppercase">Key findings</div>
+                  <ul id="reportFindings" class="mt-2 text-sm space-y-2"></ul>
+                </div>
+                <div>
+                  <div class="text-[11px] text-[#92adc9] font-bold uppercase">Evidence & sources</div>
+                  <ul id="reportEvidence" class="mt-2 text-sm space-y-2"></ul>
+                </div>
+                <div>
+                  <div class="text-[11px] text-[#92adc9] font-bold uppercase">Limitations</div>
+                  <ul id="reportLimitations" class="mt-2 text-sm space-y-1"></ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Errors -->
+          <div id="errorPanel" class="hidden border border-red-500/40 rounded-xl bg-red-500/10 p-4">
+            <div class="text-[11px] text-red-200 font-bold uppercase">Error</div>
+            <pre id="errorText" class="mt-2 text-xs whitespace-pre-wrap text-red-100"></pre>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const els = {
+        connBadge: document.getElementById("conn-badge"),
+        connDot: document.getElementById("conn-dot"),
+        connText: document.getElementById("conn-text"),
+        messages: document.getElementById("messages"),
+        query: document.getElementById("query"),
+        maxRevisions: document.getElementById("maxRevisions"),
+        sendBtn: document.getElementById("sendBtn"),
+        stopBtn: document.getElementById("stopBtn"),
+        clearBtn: document.getElementById("clearBtn"),
+        statusText: document.getElementById("statusText"),
+        statusIcon: document.getElementById("statusIcon"),
+        iterText: document.getElementById("iterText"),
+        elapsedText: document.getElementById("elapsedText"),
+        exportBtn: document.getElementById("exportBtn"),
+        traceList: document.getElementById("traceList"),
+        criticDecision: document.getElementById("criticDecision"),
+        criticScoreText: document.getElementById("criticScoreText"),
+        criticScoreBar: document.getElementById("criticScoreBar"),
+        missingInfo: document.getElementById("missingInfo"),
+        sourcesCount: document.getElementById("sourcesCount"),
+        sourcesBody: document.getElementById("sourcesBody"),
+        reportFindings: document.getElementById("reportFindings"),
+        reportEvidence: document.getElementById("reportEvidence"),
+        reportLimitations: document.getElementById("reportLimitations"),
+        errorPanel: document.getElementById("errorPanel"),
+        errorText: document.getElementById("errorText"),
+
+        // timeline
+        cardPlanning: document.getElementById("card-planning"),
+        cardSearch: document.getElementById("card-search"),
+        cardCritic: document.getElementById("card-critic"),
+        cardReport: document.getElementById("card-report"),
+        subPlanning: document.getElementById("sub-planning"),
+        subCritic: document.getElementById("sub-critic"),
+        subReport: document.getElementById("sub-report"),
+        barPlanning: document.getElementById("bar-planning"),
+        barSearch: document.getElementById("bar-search"),
+        barCritic: document.getElementById("bar-critic"),
+        checkPlanning: document.getElementById("check-planning"),
+        checkSearch: document.getElementById("check-search"),
+        checkCritic: document.getElementById("check-critic"),
+        checkReport: document.getElementById("check-report"),
+      };
+
+      function setConn(state) {
+        // state: 'connected' | 'disconnected' | 'checking'
+        els.connBadge.className = "flex items-center gap-1.5 px-2 py-0.5 rounded-full border";
+        if (state === "connected") {
+          els.connBadge.classList.add("bg-green-500/10", "border-green-500/20");
+          els.connDot.className = "size-2 rounded-full bg-green-500";
+          els.connText.className = "text-[11px] font-bold text-green-500 uppercase tracking-wider";
+          els.connText.textContent = "Connected";
+        } else if (state === "disconnected") {
+          els.connBadge.classList.add("bg-red-500/10", "border-red-500/20");
+          els.connDot.className = "size-2 rounded-full bg-red-500";
+          els.connText.className = "text-[11px] font-bold text-red-500 uppercase tracking-wider";
+          els.connText.textContent = "Disconnected";
+        } else {
+          els.connBadge.classList.add("bg-amber-500/10", "border-amber-500/20");
+          els.connDot.className = "size-2 rounded-full bg-amber-500";
+          els.connText.className = "text-[11px] font-bold text-amber-500 uppercase tracking-wider";
+          els.connText.textContent = "Checking…";
+        }
+      }
+
+      function setStatus(mode) {
+        // mode: idle | working
+        if (mode === "working") {
+          els.statusText.textContent = "Researching…";
+          els.statusIcon.classList.add("animate-spin");
+          document.getElementById("statusBadge").className =
+            "flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/20 border border-primary/30";
+          els.statusIcon.className = "material-symbols-outlined text-primary text-[18px] animate-spin";
+          els.statusText.className = "text-xs font-bold text-primary uppercase tracking-widest";
+        } else {
+          els.statusText.textContent = "Idle";
+          els.statusIcon.classList.remove("animate-spin");
+          document.getElementById("statusBadge").className =
+            "flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#233648] border border-[#324d67]";
+          els.statusIcon.className = "material-symbols-outlined text-[#92adc9] text-[18px]";
+          els.statusText.className = "text-xs font-bold text-[#92adc9] uppercase tracking-widest";
+          resetTimeline();
+        }
+      }
+
+      function pad2(n) {
+        return String(n).padStart(2, "0");
+      }
+
+      function fmtElapsed(ms) {
+        const s = Math.max(0, Math.floor(ms / 1000));
+        const hh = Math.floor(s / 3600);
+        const mm = Math.floor((s % 3600) / 60);
+        const ss = s % 60;
+        return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
+      }
+
+      const stageMap = {
+        planning: "planning",
+        search: "search",
+        reasoning: "search", // reasoning is internal; keep timeline at Search until Critic
+        critic_step: "critic_step",
+        report_step: "report_step",
+      };
+
+      const completed = new Set();
+
+      function resetTimeline() {
+        completed.clear();
+        if (els.checkPlanning) els.checkPlanning.classList.add("hidden");
+        if (els.checkSearch) els.checkSearch.classList.add("hidden");
+        if (els.checkCritic) els.checkCritic.classList.add("hidden");
+        if (els.checkReport) els.checkReport.classList.add("hidden");
+        setActiveStage(null);
+        if (els.subPlanning) els.subPlanning.textContent = "—";
+        if (els.subCritic) els.subCritic.textContent = "—";
+        if (els.subReport) els.subReport.textContent = "—";
+      }
+
+      function setActiveStage(stage) {
+        const stageKey = stage ? stageMap[stage] || stage : null;
+
+        const cards = {
+          planning: els.cardPlanning,
+          search: els.cardSearch,
+          critic_step: els.cardCritic,
+          report_step: els.cardReport,
+        };
+
+        // mark completion when moving forward
+        if (stageKey && stageKey !== "planning") completed.add("planning");
+        if (stageKey && stageKey !== "search" && stageKey !== "planning") completed.add("search");
+        if (stageKey && stageKey === "report_step") completed.add("critic_step");
+
+        if (completed.has("planning") && els.checkPlanning) els.checkPlanning.classList.remove("hidden");
+        if (completed.has("search") && els.checkSearch) els.checkSearch.classList.remove("hidden");
+        if (completed.has("critic_step") && els.checkCritic) els.checkCritic.classList.remove("hidden");
+        if (completed.has("report_step") && els.checkReport) els.checkReport.classList.remove("hidden");
+
+        for (const el of Object.values(cards)) {
+          if (!el) continue;
+          el.classList.remove("ring-1", "ring-primary/20", "border-primary/50");
+          el.classList.add("opacity-70");
+        }
+
+        const active = stageKey ? cards[stageKey] : null;
+        if (active) {
+          active.classList.add("ring-1", "ring-primary/20", "border-primary/50");
+          active.classList.remove("opacity-70");
+        }
+
+        if (els.barPlanning) {
+          els.barPlanning.classList.remove("animate-pulse", "w-2/3", "w-0");
+          if (stageKey === "planning") {
+            els.barPlanning.classList.add("w-2/3", "animate-pulse");
+          } else {
+            els.barPlanning.classList.add("w-0");
+          }
+        }
+
+        if (els.barSearch) {
+          els.barSearch.classList.remove("animate-pulse", "w-2/3", "w-0");
+          if (stageKey === "search") {
+            els.barSearch.classList.add("w-2/3", "animate-pulse");
+          } else {
+            els.barSearch.classList.add("w-0");
+          }
+        }
+
+        if (els.barCritic) {
+          els.barCritic.classList.remove("animate-pulse", "w-2/3", "w-0");
+          if (stageKey === "critic_step") {
+            els.barCritic.classList.add("w-2/3", "animate-pulse");
+          } else {
+            els.barCritic.classList.add("w-0");
+          }
+        }
+
+        if (els.subPlanning) els.subPlanning.textContent = stageKey === "planning" ? "Working…" : "—";
+        if (els.subCritic) {
+          els.subCritic.textContent = stageKey === "critic_step" ? "Working…" : "—";
+        }
+        if (els.subReport) {
+          els.subReport.textContent = stageKey === "report_step" ? "Working…" : "—";
+        }
+
+        if (stageKey === "report_step" && els.checkReport) {
+          els.checkReport.classList.remove("hidden");
+          completed.add("report_step");
+        }
+      }
+
+      function clearError() {
+        els.errorPanel.classList.add("hidden");
+        els.errorText.textContent = "";
+      }
+
+      function showError(msg) {
+        els.errorPanel.classList.remove("hidden");
+        els.errorText.textContent = msg;
+      }
+
+      function appendMessage(role, text) {
+        const wrapper = document.createElement("div");
+        wrapper.className = role === "user" ? "flex flex-col items-end gap-1" : "flex flex-col items-start gap-1";
+
+        const label = document.createElement("p");
+        label.className = "text-[#92adc9] text-[12px] font-medium uppercase tracking-wider px-1";
+        label.textContent = role === "user" ? "You" : "Assistant";
+
+        const bubble = document.createElement("div");
+        if (role === "user") {
+          bubble.className = "max-w-[85%] rounded-2xl rounded-tr-none px-4 py-3 bg-primary text-white shadow-lg";
+          bubble.innerHTML = `<p class="text-sm leading-relaxed"></p>`;
+          bubble.querySelector("p").textContent = text;
+        } else {
+          bubble.className = "flex gap-3 max-w-[85%]";
+          bubble.innerHTML = `
+            <div class="bg-primary/20 flex items-center justify-center rounded-full w-8 h-8 shrink-0">
+              <span class="material-symbols-outlined text-primary text-[18px]">smart_toy</span>
+            </div>
+            <div class="flex flex-col gap-3 rounded-2xl rounded-tl-none px-4 py-3 bg-[#233648] text-white">
+              <p class="text-sm leading-relaxed"></p>
+            </div>
+          `;
+          bubble.querySelector("p").textContent = text;
+        }
+
+        wrapper.appendChild(label);
+        wrapper.appendChild(bubble);
+        els.messages.appendChild(wrapper);
+        els.messages.scrollTop = els.messages.scrollHeight;
+      }
+
+      function setList(listEl, items) {
+        listEl.innerHTML = "";
+        for (const it of items || []) {
+          const li = document.createElement("li");
+          li.textContent = it;
+          listEl.appendChild(li);
+        }
+      }
+
+      function renderKeyFindings(items) {
+        els.reportFindings.innerHTML = "";
+        for (const raw of items || []) {
+          const text = String(raw || "").trim();
+          if (!text) continue;
+
+          const li = document.createElement("li");
+          li.className = "rounded-lg border border-[#233648] bg-[#1a2632] px-3 py-2";
+
+          // Split optional "**Label:** rest" formatting into header + body
+          const m = text.match(/^\*\*(.+?)\*\*:\s*(.+)$/);
+          if (m) {
+            const title = document.createElement("div");
+            title.className = "text-xs font-bold text-primary";
+            title.textContent = m[1].trim();
+            const body = document.createElement("div");
+            body.className = "text-sm text-white/90 mt-1 leading-relaxed";
+            body.textContent = m[2].trim();
+            li.appendChild(title);
+            li.appendChild(body);
+          } else {
+            const body = document.createElement("div");
+            body.className = "text-sm text-white/90 leading-relaxed";
+            body.textContent = text;
+            li.appendChild(body);
+          }
+
+          els.reportFindings.appendChild(li);
+        }
+      }
+
+      function renderEvidenceWithInlineBadges(evidenceItems, sources) {
+        els.reportEvidence.innerHTML = "";
+
+        // Build a map url -> index in sources (1-based)
+        const urlToIndex = new Map();
+        (sources || []).forEach((s, i) => {
+          if (s && s.url) urlToIndex.set(String(s.url), i + 1);
+        });
+
+        for (const item of evidenceItems || []) {
+          const li = document.createElement("li");
+          li.className = "flex items-start justify-between gap-3";
+
+          // try to extract last '(url)' from the text
+          const m = String(item).match(/\((https?:\/\/[^\s)]+)\)\s*$/);
+          const url = m ? m[1] : null;
+          const text = url ? String(item).replace(/\s*\((https?:\/\/[^\s)]+)\)\s*$/, "") : String(item);
+
+          const left = document.createElement("div");
+          left.className = "min-w-0";
+          const p = document.createElement("p");
+          p.className = "text-sm leading-relaxed";
+          p.textContent = text;
+          left.appendChild(p);
+
+          li.appendChild(left);
+
+          if (url) {
+            const idx = urlToIndex.get(url) || "";
+            let domain = url;
+            try {
+              domain = new URL(url).hostname;
+            } catch {}
+
+            const a = document.createElement("a");
+            a.href = url;
+            a.target = "_blank";
+            a.rel = "noreferrer";
+            a.title = domain;
+            a.className =
+              "shrink-0 w-7 h-7 rounded-full bg-[#233648] border border-[#324d67] text-[#92adc9] flex items-center justify-center text-[10px] font-bold hover:border-primary hover:text-white hover:bg-primary/20 transition-colors";
+            a.textContent = idx ? String(idx) : "↗";
+            li.appendChild(a);
+          }
+
+          els.reportEvidence.appendChild(li);
+        }
+      }
+
+      function setCritic(critic) {
+        if (!els.criticDecision) return;
+        if (!critic) {
+          els.criticDecision.textContent = "—";
+          if (els.criticScoreText) els.criticScoreText.textContent = "—";
+          if (els.criticScoreBar) els.criticScoreBar.style.width = "0%";
+          if (els.missingInfo) els.missingInfo.innerHTML = "";
+          return;
+        }
+
+        els.criticDecision.textContent = critic.decision || "—";
+        const score = Number(critic.sufficiency_score ?? 0);
+        if (els.criticScoreText) els.criticScoreText.textContent = `${score}%`;
+        if (els.criticScoreBar) els.criticScoreBar.style.width = `${Math.max(0, Math.min(100, score))}%`;
+
+        const gaps = (critic.missing_gaps || []).map((g) => `• ${g.description || g.suggested_query || g.gap_id}`);
+        if (els.missingInfo) setList(els.missingInfo, gaps);
+      }
+
+      function setSources(sources) {
+        els.sourcesBody.innerHTML = "";
+        const n = (sources || []).length;
+        els.sourcesCount.textContent = `${n} result${n === 1 ? "" : "s"}`;
+
+        for (const s of sources || []) {
+          const url = s.url || "";
+          let domain = "";
+          try {
+            domain = url ? new URL(url).hostname : "";
+          } catch {
+            domain = "";
+          }
+
+          const tr = document.createElement("tr");
+          tr.className = "hover:bg-[#233648]/30 transition-colors";
+          tr.innerHTML = `
+            <td class="px-4 py-3 font-medium truncate max-w-[220px]" title="${(s.title || "").replaceAll('"', '"')}">${s.title || ""}</td>
+            <td class="px-4 py-3 text-[#92adc9]">${domain}</td>
+            <td class="px-4 py-3 text-right"><a class="text-primary hover:underline" href="${url}" target="_blank" rel="noreferrer">open</a></td>
+          `;
+          els.sourcesBody.appendChild(tr);
+        }
+      }
+
+      function setTrace(trace) {
+        els.traceList.innerHTML = "";
+        for (const t of trace || []) {
+          const li = document.createElement("li");
+          li.className = "flex gap-2";
+          li.innerHTML = `<span class="text-primary">•</span><span></span>`;
+          li.querySelector("span:last-child").textContent = t;
+          els.traceList.appendChild(li);
+        }
+      }
+
+      let lastResponse = null;
+
+      async function checkHealth() {
+        try {
+          const res = await fetch("/health", { cache: "no-store" });
+          setConn(res.ok ? "connected" : "disconnected");
+        } catch {
+          setConn("disconnected");
+        }
+      }
+
+      let currentRun = {
+        es: null,
+        elapsedTimer: null,
+        startedAt: null,
+      };
+
+      function stopCurrentRun() {
+        if (currentRun.es) {
+          try {
+            currentRun.es.close();
+          } catch {}
+          currentRun.es = null;
+        }
+        if (currentRun.elapsedTimer) {
+          clearInterval(currentRun.elapsedTimer);
+          currentRun.elapsedTimer = null;
+        }
+        if (currentRun.startedAt != null && els.elapsedText) {
+          els.elapsedText.textContent = fmtElapsed(performance.now() - currentRun.startedAt);
+        }
+        setStatus("idle");
+        if (els.stopBtn) els.stopBtn.classList.add("hidden");
+      }
+
+      async function runResearch() {
+        stopCurrentRun();
+        clearError();
+        const q = (els.query.value || "").trim();
+        const maxRev = Number(els.maxRevisions.value || 10);
+        if (!q) return;
+
+        // Clear prompt after sending
+        els.query.value = "";
+
+        appendMessage("user", q);
+        setStatus("working");
+        setActiveStage("planning");
+        els.iterText.textContent = `0 / ${maxRev}`;
+
+        currentRun.startedAt = performance.now();
+        currentRun.elapsedTimer = setInterval(() => {
+          if (els.elapsedText) els.elapsedText.textContent = fmtElapsed(performance.now() - currentRun.startedAt);
+        }, 250);
+
+        // reset panels for a new run
+        setTrace([]);
+        setSources([]);
+        setCritic(null);
+        resetTimeline();
+        renderKeyFindings([]);
+        renderEvidenceWithInlineBadges([], []);
+        setList(els.reportLimitations, []);
+
+        // lightweight placeholder assistant message
+        appendMessage("assistant", "Working on it. This can take a minute depending on max revisions.");
+
+        try {
+          if (els.stopBtn) els.stopBtn.classList.remove("hidden");
+
+          // SSE progress updates
+          currentRun.es = new EventSource(`/research/stream?query=${encodeURIComponent(q)}&max_revisions=${encodeURIComponent(String(maxRev))}`);
+
+          const finalPromise = new Promise((resolve, reject) => {
+            currentRun.es.onmessage = (ev) => {
+              try {
+                const msg = JSON.parse(ev.data);
+
+                if (msg.type === "state") {
+                  if (msg.stage) setActiveStage(msg.stage);
+                  if (msg.iteration_count != null) els.iterText.textContent = `${msg.iteration_count} / ${maxRev}`;
+                  if (msg.trace) setTrace(msg.trace);
+                  if (msg.critic) setCritic(msg.critic);
+
+                  // Show the plan when it becomes available
+                  if (msg.plan && msg.stage === "planning") {
+                    const summary = msg.plan.research_objective || "";
+                    if (summary) {
+                      appendMessage("assistant", `Plan: ${summary}`);
+                    }
+                  }
+
+                  return;
+                }
+
+                if (msg.type === "final") {
+                  resolve(msg.response);
+                  return;
+                }
+
+                if (msg.type === "error") {
+                  reject(new Error(msg.message || "stream error"));
+                }
+              } catch (e) {
+                reject(e);
+              }
+            };
+
+            currentRun.es.onerror = () => {
+              // some proxies close SSE after final; ignore if already resolved
+              reject(new Error("SSE connection error"));
+            };
+          });
+
+          const data = await finalPromise;
+          lastResponse = data;
+
+          // Dashboard updates
+          els.iterText.textContent = data.iteration_count != null ? `${data.iteration_count} / ${maxRev}` : `— / ${maxRev}`;
+          setTrace(data.trace || []);
+          setSources(data.sources || []);
+          setCritic(data.critic);
+          renderKeyFindings((data.report && data.report.key_findings) || []);
+          renderEvidenceWithInlineBadges((data.report && data.report.evidence_and_sources) || [], data.sources || []);
+          setList(els.reportLimitations, (data.report && data.report.limitations) || []);
+
+          setActiveStage("report_step");
+
+          // Final assistant bubble summary
+          const summary = (data.report && data.report.key_findings && data.report.key_findings[0]) || "Research complete.";
+          appendMessage("assistant", summary);
+        } catch (err) {
+          showError(String(err));
+          appendMessage("assistant", "I hit an error calling the backend. See the error panel on the right.");
+          setActiveStage(null);
+        } finally {
+          stopCurrentRun();
+        }
+      }
+
+      els.sendBtn.addEventListener("click", runResearch);
+      if (els.stopBtn) els.stopBtn.addEventListener("click", stopCurrentRun);
+      els.query.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") runResearch();
+      });
+      els.clearBtn.addEventListener("click", () => {
+        els.query.value = "";
+        els.messages.innerHTML = "";
+        setTrace([]);
+        setSources([]);
+        setCritic(null);
+        resetTimeline();
+        renderKeyFindings([]);
+        renderEvidenceWithInlineBadges([], []);
+        setList(els.reportLimitations, []);
+        clearError();
+        lastResponse = null;
+        els.iterText.textContent = "0 / 0";
+        if (els.elapsedText) els.elapsedText.textContent = "00:00:00";
+        setStatus("idle");
+      });
+      els.exportBtn.addEventListener("click", () => {
+        if (!lastResponse) return;
+        const q = (lastResponse.query || "research").toString().slice(0, 40).replaceAll(/[^a-z0-9\-\_\s]/gi, "");
+        const stamp = new Date().toISOString().replaceAll(":", "-");
+        const blob = new Blob([JSON.stringify(lastResponse, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${stamp}-${q || "research"}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      });
+
+      // Init
+      setConn("checking");
+      setStatus("idle");
+      checkHealth();
+      setInterval(checkHealth, 5000);
+
+      // Seed example
+      els.query.value =
+        "Analyze the 2024 EV market trends and identify the top 5 emerging manufacturers in South East Asia. Specifically look for Q4 profitability projections.";
+    </script>
+  </body>
+</html>

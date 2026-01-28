@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are a senior research planner. You create realistic, high-quality web search plans. "
+    "You MUST match the user's language in ALL text fields and queries. "
+    "If the user writes in Bulgarian, all steps/topics/queries MUST be Bulgarian. "
     "Return ONLY valid JSON matching the provided schema. No markdown, no commentary."
 )
 
@@ -23,6 +25,7 @@ def _planning_user_prompt(query: str, plan_version: int, feedback: str) -> str:
         f"Plan version: {plan_version}\n"
         f"Critic feedback to incorporate (may be empty): {sanitize_for_prompt(feedback, 800)}\n\n"
         "Create a ResearchPlan JSON matching this schema exactly.\n"
+        "LANGUAGE RULE: All fields MUST be in the same language as the user query.\n"
         "Important rules:\n"
         "- steps[*].suggested_queries must each include at least one keyword from steps[*].topics (substring, case-insensitive).\n"
         "- initial_search_batch must be a deduplicated union of all steps[*].suggested_queries, capped to 3-8 items.\n"

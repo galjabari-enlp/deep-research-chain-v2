@@ -11,6 +11,7 @@ from app.graph.nodes.reasoning import reasoning_node
 from app.graph.nodes.report import report_node
 from app.graph.nodes.search import search_node
 from app.graph.state import ResearchState
+from app.services.fetcher import PageFetcher
 from app.services.llm import LLMClient
 from app.services.serper import SerperClient
 
@@ -18,21 +19,26 @@ from app.services.serper import SerperClient
 def _route_from_critic(state: ResearchState) -> Literal["planning", "search", "report"]:
     # Max-iterations hard stop.
     if state.iteration_count >= state.max_revisions:
+        state.trace.append("Routing: max_revisions reached -> report")
         return "report"
 
     if state.critic is None:
+        state.trace.append("Routing: missing critic -> report")
         return "report"
 
     decision = state.critic.decision
 
     if decision == "report":
+        state.trace.append("Routing: critic=report -> report")
         return "report"
 
     if decision == "replan":
+        state.trace.append("Routing: critic=replan -> planning")
         return "planning"
 
     # refine_search
     if state.plan is None:
+        state.trace.append("Routing: critic=refine_search but no plan -> planning")
         return "planning"
 
     # Validate suggested queries against plan topics; if invalid, replan.
@@ -40,19 +46,23 @@ def _route_from_critic(state: ResearchState) -> Literal["planning", "search", "r
         for gap in state.critic.missing_gaps:
             if not validate_gap_query_against_plan(gap, state.plan):
                 # Critic asked for an off-plan query => plan/critic misaligned.
+                state.trace.append(
+                    f"Routing: critic gap off-plan -> planning | gap={gap.gap_id}"
+                )
                 return "planning"
 
+    state.trace.append("Routing: critic=refine_search -> search")
     return "search"
 
 
-def build_research_graph(*, llm: LLMClient, serper: SerperClient):
+def build_research_graph(*, llm: LLMClient, serper: SerperClient, fetcher: PageFetcher | None = None):
     graph = StateGraph(ResearchState)
 
     async def planning(state: ResearchState) -> ResearchState:
         return await planning_node(state, llm)
 
     async def search(state: ResearchState) -> ResearchState:
-        return await search_node(state, serper)
+        return await search_node(state, serper, fetcher)
 
     async def reasoning(state: ResearchState) -> ResearchState:
         return await reasoning_node(state, llm)

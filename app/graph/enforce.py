@@ -29,7 +29,24 @@ def dedupe_preserve_order(items: Iterable[str]) -> List[str]:
 
 def query_contains_any_topic(query: str, topics: Sequence[str]) -> bool:
     q = query.lower()
-    return any(t.lower() in q for t in topics if t.strip())
+    # loosen matching slightly for cross-language / inflection by matching on word stems >=4 chars
+    topic_stems: list[str] = []
+    for t in topics:
+        t = (t or "").strip().lower()
+        if not t:
+            continue
+        # take first word and strip quotes/punct
+        t = re.sub(r"[^\w\s-]", "", t)
+        first = t.split()[0] if t.split() else t
+        if len(first) >= 4:
+            topic_stems.append(first)
+        else:
+            topic_stems.append(t)
+
+    # also normalize query
+    q_norm = re.sub(r"[^\w\s-]", " ", q)
+
+    return any(stem and stem in q_norm for stem in topic_stems)
 
 
 def plan_all_topics(plan: ResearchPlan) -> List[str]:

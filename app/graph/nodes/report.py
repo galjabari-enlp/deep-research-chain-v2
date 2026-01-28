@@ -22,11 +22,21 @@ def _collect_sources(state: ResearchState, cap: int = 25) -> list[SearchResult]:
 async def report_node(state: ResearchState) -> ResearchState:
     sources = _collect_sources(state)
 
-    key_findings = []
+    # Prefer reasoning notes; otherwise derive minimal findings from top snippets.
+    key_findings: list[str] = []
     if state.reasoning_notes:
         key_findings.extend(state.reasoning_notes[-12:])
 
-    evidence = []
+    if not key_findings:
+        for r in sources[:8]:
+            snip = (r.snippet or "").strip()
+            if not snip:
+                continue
+            # Keep findings short, snippet-derived (no hallucinations)
+            key_findings.append(snip[:200] + ("…" if len(snip) > 200 else ""))
+        key_findings = key_findings[:8]
+
+    evidence: list[str] = []
     for r in sources[:12]:
         snippet = (r.snippet or "").strip()
         if snippet:
@@ -34,17 +44,20 @@ async def report_node(state: ResearchState) -> ResearchState:
         else:
             evidence.append(f"{r.title} ({r.url})")
 
-    limitations = []
+    # Do NOT include fetched page excerpts in the report output (too noisy / boilerplate-heavy).
+    # We keep them only for internal reasoning/debugging.
+
+    limitations: list[str] = []
     if state.iteration_count >= state.max_revisions:
         limitations.append(
             f"Max iterations reached ({state.max_revisions}); report is best-effort."
         )
     if not sources:
         limitations.append("No search results were collected (Serper errors or all queries rejected).")
-    limitations.append("This agent uses search snippets only and does not scrape full pages.")
+    limitations.append("This agent may fetch linked pages (best-effort) to extract additional text; failures are logged.")
 
     state.report = FinalReport(
-        key_findings=key_findings or ["No validated findings extracted from snippets."],
+        key_findings=key_findings or ["No findings could be extracted from the collected evidence."],
         evidence_and_sources=evidence or ["No sources available."],
         limitations=limitations,
     )

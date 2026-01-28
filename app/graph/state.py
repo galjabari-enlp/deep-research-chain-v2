@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from .models import (
     CriticAssessment,
@@ -23,6 +23,9 @@ class ResearchState:
     # Search
     search_queries: List[str] = field(default_factory=list)
     searches: List[SearchQueryRecord] = field(default_factory=list)
+
+    # Optional: fetched page text (if enabled)
+    fetched_pages: Dict[str, str] = field(default_factory=dict)  # url -> extracted text
 
     # Reasoning
     reasoning_notes: List[str] = field(default_factory=list)

@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from app.core import setup_logging
 from app.graph import ResearchState, build_research_graph
-from app.services import LLMClient, SerperClient
+from app.services import LLMClient, PageFetcher, SerperClient
 
 
 def _print_report(state: ResearchState) -> None:
@@ -49,7 +49,8 @@ def _print_report(state: ResearchState) -> None:
 async def _run(query: str, max_revisions: int) -> int:
     llm = LLMClient()
     serper = SerperClient()
-    graph = build_research_graph(llm=llm, serper=serper)
+    fetcher = PageFetcher()
+    graph = build_research_graph(llm=llm, serper=serper, fetcher=fetcher)
 
     init = ResearchState(query=query, max_revisions=max_revisions)
     out = await graph.ainvoke(init)
