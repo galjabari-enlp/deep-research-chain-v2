@@ -13,6 +13,9 @@ export type JudgeEvaluationCardProps = {
   }
   onPublish?: () => void
   onRequestRevision?: () => void
+  // When true, hide the revision button entirely.
+  // Product rule: you cannot request a revision for a revision.
+  hideRequestRevision?: boolean
 }
 
 function clamp01(n: number) {
@@ -218,6 +221,7 @@ export default function JudgeEvaluationCard({
   publishState,
   onPublish,
   onRequestRevision,
+  hideRequestRevision,
 }: JudgeEvaluationCardProps) {
   const [improvementsOpen, setImprovementsOpen] = useState(false)
 
@@ -374,14 +378,16 @@ export default function JudgeEvaluationCard({
           {isPublished ? 'Published' : isPublishing ? 'Publishing…' : 'Publish now'}
         </button>
 
-        <button
-          type="button"
-          onClick={handleRequestRevision}
-          className="px-3 py-2 rounded-lg bg-[#233648] border border-[#324d67] text-[#92adc9] hover:text-white hover:border-primary text-xs font-bold transition-colors"
-          aria-label="Request revision"
-        >
-          Request revision
-        </button>
+        {hideRequestRevision ? null : (
+          <button
+            type="button"
+            onClick={handleRequestRevision}
+            className="px-3 py-2 rounded-lg bg-[#233648] border border-[#324d67] text-[#92adc9] hover:text-white hover:border-primary text-xs font-bold transition-colors"
+            aria-label="Request revision"
+          >
+            Request revision
+          </button>
+        )}
       </div>
 
       {publishState?.error ? <div className="text-[11px] text-red-200">{publishState.error}</div> : null}

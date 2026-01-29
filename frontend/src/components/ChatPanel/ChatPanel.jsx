@@ -146,6 +146,7 @@ export default function ChatPanel({
                           publishState={m.publishState}
                           onPublish={() => onPublish?.(m)}
                           onRequestRevision={() => onRequestRevision?.(m)}
+                          hideRequestRevision={!!m.isRevision}
                         />
                       </div>
                     ) : null}

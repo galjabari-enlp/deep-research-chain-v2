@@ -850,11 +850,16 @@ export default function App() {
     // Preserve history: append user revision request, then start a new run.
     addMessage('user', `Revision request for ${reportId}: ${note}`.trim())
 
+    // IMPORTANT: for revision, clear any prior run's evaluation/metadata so we don't show stale scoring.
+    setEvaluation(null)
+    setJudgeMetadata(null)
+
     stopCurrentRun()
     resetPanelsForNewRun()
 
     setStatusMode('working')
-    setStage('planning')
+    // Revision is a full new pass; start at policy guard like a normal run.
+    setStage('policy_guard')
     setIterationCount(0)
 
     runRef.current.startedAt = performance.now()
@@ -883,7 +888,9 @@ export default function App() {
       const payload = {
         query: String(message?.topic || lastResponse?.query || '').trim() || 'report',
         user_note: note,
-        report: lastResponse?.report || {},
+        // IMPORTANT: send the prior *public* report content to the backend as revision context.
+        // `lastResponse.report` is the dashboard report blocks, while the revise endpoint expects a PublicReport shape.
+        report: lastResponse?.public_report || {},
         evaluation: message?.evaluation || {},
         metadata: message?.judgeMetadata || null,
         sources: lastResponse?.sources || [],
@@ -906,10 +913,39 @@ export default function App() {
         throw new Error(String(detail))
       }
 
-      setLastResponse(data)
+      // If backend includes structured execution_trace, keep it on lastResponse
+      // (the dashboard currently renders from traceLines, but we may expand it later).
+      // No-op here; just leaving a clear hook.
+
+      // Preserve previous response fields if the revise endpoint omits any optional ones.
+      setLastResponse((prev) => ({ ...(prev || {}), ...(data || {}) }))
+
+      // Revision should show full execution details like a normal run.
+      // Use trace lines (existing dashboard renderer relies on these).
+      setTraceLines(normalizeTrace(data.trace || []).map(cleanLine).filter(Boolean))
+      setIterationCount(data.iteration_count ?? 0)
+      setSources(data.sources || [])
+      setCritic(data.critic || null)
+
+      // Explicitly show that both judge feedback and the user's note were used.
+      // Prefer the local note (source of truth from the modal) and only fall back to backend echo.
+      const noteEcho = String(note || '').trim() || String(data?.metadata?.revision_user_note || '').trim()
+      if (noteEcho) {
+        addMessage('agent', `Revision inputs applied: user_note="${noteEcho}" (plus prior judge feedback).`, {
+          statusText: 'Revision context applied.',
+        })
+      } else {
+        addMessage('agent', 'Revision inputs applied: prior judge feedback (no user note provided).', {
+          statusText: 'Revision context applied.',
+        })
+      }
+
+      // IMPORTANT: /revise now returns the full report payload (blocks/limitations) at top-level `report`.
       setReport(data.report || { key_findings: [], evidence_and_sources: [], limitations: [] })
       setEvaluation(data.evaluation || null)
       setJudgeMetadata(data.metadata || null)
+
+      // Revision is treated exactly like a normal pass, so show full timeline.
       setStage(data.evaluation ? 'judge_step' : 'report_step')
 
       const blocks = (data.report && Array.isArray(data.report.blocks) && data.report.blocks) || []
@@ -926,6 +962,7 @@ export default function App() {
                 topic: data.report?.topic || data.query || undefined,
                 reportId: data.report?.id || undefined,
                 statusText: 'Done.',
+                isRevision: true,
               }
             : m,
         ),

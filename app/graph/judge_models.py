@@ -74,6 +74,8 @@ class JudgeResponse(BaseModel):
     report: PublicReport
     evaluation: Optional[JudgeEvaluation] = None
     metadata: JudgeMetadata
+    # Optional: include structured execution trace for UI dashboards (useful for /revise).
+    execution_trace: Optional[dict] = None
 
 
 # ---- LLM-only schema ----

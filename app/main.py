@@ -204,8 +204,8 @@ async def research(req: ResearchRequest) -> JudgeResponse:
     )
 
 
-@app.post("/api/reports/{report_id}/revise", response_model=JudgeResponse)
-async def report_revise(report_id: str, req: ResearchReviseRequest) -> JudgeResponse:
+@app.post("/api/reports/{report_id}/revise")
+async def report_revise(report_id: str, req: ResearchReviseRequest):
     """Regenerate report using judge feedback + optional user note.
 
     Stateless: client POSTs prior `report` + `evaluation` (and optionally `sources`).
@@ -221,6 +221,9 @@ async def report_revise(report_id: str, req: ResearchReviseRequest) -> JudgeResp
 
     llm = LLMClient()
     serper = SerperClient()
+
+    # IMPORTANT: revisions must execute searches like a normal run.
+    # Without a fetcher, reports often have no sources and the execution trace looks empty.
     fetcher = PageFetcher()
     graph = build_research_graph(llm=llm, serper=serper, fetcher=fetcher)
 
@@ -313,6 +316,21 @@ async def report_revise(report_id: str, req: ResearchReviseRequest) -> JudgeResp
     if prior_sources and init.public_report is not None:
         init.public_report.sources = prior_sources
 
+    # For revision runs, reset execution artifacts so the response reflects THIS run only.
+    # Otherwise, the UI may show empty/irrelevant execution trace.
+    init.trace = []
+    init.search_queries = []
+    init.searches = []
+    init.fetched_pages = {}
+    init.critic = None
+    init.critic_history = []
+    init.plan = None
+    init.plan_history = []
+    init.reasoning_notes = []
+    init.gaps = []
+    init.proposed_queries = []
+    init.execution_trace = init.execution_trace.__class__()
+
     try:
         raw_state = await graph.ainvoke(init, config={"recursion_limit": 120})
     except Exception as e:
@@ -325,8 +343,8 @@ async def report_revise(report_id: str, req: ResearchReviseRequest) -> JudgeResp
     if final_state.public_report is None:
         final_state.public_report = PublicReport(id="rep_error", topic=req.query, content="", sources=prior_sources, word_count=0, created_at=None)
 
-    if final_state.judge_evaluation is None:
-        final_state.judge_evaluation = base_eval
+    # IMPORTANT: revision is a full new pass and MUST be re-judged.
+    # Do not fall back to the previous/base evaluation.
 
     if final_state.judge_metadata is None:
         from app.core import settings
@@ -343,7 +361,67 @@ async def report_revise(report_id: str, req: ResearchReviseRequest) -> JudgeResp
     if final_state.public_report is not None:
         final_state.public_report.id = next_id
 
-    return JudgeResponse(status="complete", report=final_state.public_report, evaluation=final_state.judge_evaluation, metadata=final_state.judge_metadata)
+    # Include a stable signal that the user's note was provided to the revision run.
+    # (UI can show this in an "Improvements" banner.)
+    meta = (final_state.judge_metadata.model_dump(mode="json") if final_state.judge_metadata is not None else {})
+    meta["revision_user_note"] = (req.user_note or "").strip()
+    meta["base_evaluation_id"] = str((req.metadata or {}).get("evaluation_id") or "").strip() or None
+
+    # Build response and include execution details for the UI dashboard.
+    # IMPORTANT: for /revise we must return the full report blocks (reporting-stage format)
+    # under top-level `report`, and keep the judge public report under `public_report`.
+    from app.graph.models import FinalReport
+
+    final_report_obj = final_state.report
+    if final_report_obj is None:
+        # Best-effort fallback to empty blocks.
+        final_report_obj = FinalReport(blocks=[], key_findings=[], evidence_and_sources=[], limitations=[])
+
+    resp = JudgeResponse(
+        status="complete",
+        report=final_state.public_report,
+        evaluation=final_state.judge_evaluation,
+        metadata=meta,
+    )
+
+    # Attach trace + sources for dashboard parity with /research.
+    try:
+        resp = resp.model_copy(
+            update={
+                "execution_trace": getattr(final_state, "execution_trace", None).model_dump(mode="json")
+                if getattr(final_state, "execution_trace", None) is not None
+                else None
+            }
+        )
+    except Exception:
+        pass
+
+    # Also attach raw trace lines + flattened sources for the existing right-side renderer.
+    # (JudgeResponse is lenient; extra keys are OK for FastAPI JSON response.)
+    payload = resp.model_dump(mode="json")
+
+    # Provide the dashboard "report" object (blocks/limitations) expected by the frontend.
+    payload["report"] = final_report_obj.model_dump(mode="json")
+
+    # Also include the stable judge public report separately (useful for publish/ids).
+    payload["public_report"] = final_state.public_report.model_dump(mode="json") if final_state.public_report is not None else None
+
+    payload["trace"] = list(getattr(final_state, "trace", None) or [])
+    payload["iteration_count"] = int(getattr(final_state, "iteration_count", 0) or 0)
+    payload["critic"] = (
+        getattr(final_state, "critic", None).model_dump(mode="json") if getattr(final_state, "critic", None) is not None else None
+    )
+    payload["plan"] = getattr(final_state, "plan", None).model_dump(mode="json") if getattr(final_state, "plan", None) is not None else None
+
+    # Include both executed queries and flattened sources.
+    payload["search_queries"] = list(getattr(final_state, "search_queries", None) or [])
+    payload["sources"] = [
+        r.model_dump(mode="json")
+        for s in (getattr(final_state, "searches", None) or [])
+        for r in (getattr(s, "results", None) or [])
+    ]
+
+    return payload
 
 
 @app.post("/api/reports/{report_id}/publish")
