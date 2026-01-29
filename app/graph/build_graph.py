@@ -8,6 +8,7 @@ from app.graph.enforce import validate_gap_query_against_plan
 from app.graph.nodes.critic import critic_node
 from app.graph.nodes.judge import judge_node
 from app.graph.nodes.planning import planning_node
+from app.graph.nodes.policy_guard import policy_guard_node
 from app.graph.nodes.reasoning import reasoning_node
 from app.graph.nodes.report import report_node
 from app.graph.nodes.search import search_node
@@ -50,6 +51,9 @@ def _route_from_critic(state: ResearchState) -> Literal["planning", "report"]:
 def build_research_graph(*, llm: LLMClient, serper: SerperClient, fetcher: PageFetcher | None = None):
     graph = StateGraph(ResearchState)
 
+    async def policy_guard(state: ResearchState) -> ResearchState:
+        return await policy_guard_node(state, llm)
+
     async def planning(state: ResearchState) -> ResearchState:
         return await planning_node(state, llm)
 
@@ -68,6 +72,7 @@ def build_research_graph(*, llm: LLMClient, serper: SerperClient, fetcher: PageF
     async def judge_step(state: ResearchState) -> ResearchState:
         return await judge_node(state, llm)
 
+    graph.add_node("policy_guard", policy_guard)
     graph.add_node("planning", planning)
     graph.add_node("search", search)
     graph.add_node("reasoning", reasoning)
@@ -77,7 +82,22 @@ def build_research_graph(*, llm: LLMClient, serper: SerperClient, fetcher: PageF
     graph.add_node("report_step", report_step)
     graph.add_node("judge_step", judge_step)
 
-    graph.set_entry_point("planning")
+    graph.set_entry_point("policy_guard")
+
+    def _route_from_guard(state: ResearchState) -> Literal["planning", "end"]:
+        if getattr(state, "status", "") == "blocked":
+            state.trace.append("Routing: policy blocked -> END")
+            return "end"
+        return "planning"
+
+    graph.add_conditional_edges(
+        "policy_guard",
+        _route_from_guard,
+        {
+            "planning": "planning",
+            "end": END,
+        },
+    )
 
     graph.add_edge("planning", "search")
     graph.add_edge("search", "reasoning")

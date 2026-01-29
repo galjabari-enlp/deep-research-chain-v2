@@ -70,9 +70,9 @@ class JudgeMetadata(BaseModel):
 
 
 class JudgeResponse(BaseModel):
-    status: Literal["processing", "complete"]
+    status: Literal["processing", "complete", "blocked"]
     report: PublicReport
-    evaluation: JudgeEvaluation
+    evaluation: Optional[JudgeEvaluation] = None
     metadata: JudgeMetadata
 
 

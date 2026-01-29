@@ -1,11 +1,13 @@
 from .critic import critic_node
 from .judge import judge_node
 from .planning import planning_node
+from .policy_guard import policy_guard_node
 from .reasoning import reasoning_node
 from .report import report_node
 from .search import search_node
 
 __all__ = [
+    "policy_guard_node",
     "planning_node",
     "search_node",
     "reasoning_node",

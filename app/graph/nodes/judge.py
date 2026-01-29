@@ -301,10 +301,14 @@ def build_judge_response(*, report: PublicReport, llm_out: JudgeLLMOutput) -> Ju
         suggested_improvements=list(llm_out.suggested_improvements or []),
     )
 
+    # IMPORTANT: never hard-code a model name that may not match runtime configuration.
+    # Use the configured LLM model for attribution.
+    from app.core import settings
+
     metadata = JudgeMetadata(
         evaluation_id=str(uuid.uuid4()),
         evaluated_at=utc_now_iso(),
-        judge_model="claude-sonnet-4-20250514",
+        judge_model=str(getattr(settings, "openai_model", "") or "").strip() or None,
         processing_time_ms=None,
         evaluation_version="1.0",
     )

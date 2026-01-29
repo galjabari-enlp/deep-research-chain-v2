@@ -186,6 +186,8 @@ export default function App() {
 
   const stageMap = useMemo(
     () => ({
+      policy_guard: 'policy_guard',
+      blocked: 'blocked',
       planning: 'planning',
       search: 'search',
       reasoning: 'search',
@@ -197,6 +199,7 @@ export default function App() {
     [],
   )
 
+  // When blocked, the run is terminated early; hide the whole dashboard timeline.
   const stageKey = stage ? stageMap[stage] || stage : null
 
   const completedStages = useMemo(() => {
@@ -327,7 +330,7 @@ export default function App() {
 
     addMessage('user', q)
     setStatusMode('working')
-    setStage('planning')
+    setStage('policy_guard')
     setIterationCount(0)
 
     runRef.current.startedAt = performance.now()
@@ -609,6 +612,38 @@ export default function App() {
       setTraceLines(normalizeTrace(finalData.trace || []).map(cleanLine).filter(Boolean))
       setSources(finalData.sources || [])
       setCritic(finalData.critic || null)
+      // If blocked, show a simple refusal message (no report/evaluation UI).
+      if (finalData?.status === 'blocked') {
+        const msg =
+          String(finalData?.final_user_message || '').trim() ||
+          "I can’t help with that request. Please try a different question."
+
+        // Clear dashboard panels and stop stage tracking.
+        setReport({ key_findings: [], evidence_and_sources: [], limitations: [] })
+        setEvaluation(null)
+        setJudgeMetadata(null)
+        setStage('blocked')
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === agentRunId
+              ? {
+                  ...m,
+                  text: msg,
+                  reportBlocks: undefined,
+                  evaluation: undefined,
+                  judgeMetadata: undefined,
+                  topic: undefined,
+                  reportId: undefined,
+                  statusText: 'Blocked.',
+                }
+              : m,
+          ),
+        )
+
+        return
+      }
+
       setReport(finalData.report || { key_findings: [], evidence_and_sources: [], limitations: [] })
       setEvaluation(finalData.evaluation || null)
       setJudgeMetadata(finalData.metadata || null)
@@ -798,7 +833,13 @@ export default function App() {
 
   const submitRevision = useCallback(async () => {
     const message = messages.find((m) => m.id === reviseUI.messageId)
-    const reportId = message?.reportId
+    const reportId = String(
+      message?.reportId ||
+        lastResponse?.report?.id ||
+        lastResponse?.report?.report_id ||
+        lastResponse?.metadata?.evaluation_id ||
+        '',
+    )
     if (!message || !reportId) {
       setReviseUI({ open: false, messageId: null, text: '' })
       return
@@ -836,6 +877,9 @@ export default function App() {
     try {
       const base = API_BASE || window.location.origin
       const url = `${base}/api/reports/${encodeURIComponent(String(reportId))}/revise`
+      console.log('[revise] POST', url)
+      // If you see “Method Not Allowed”, your backend likely doesn't have this route or expects a different method.
+      // This log helps confirm the exact URL being hit.
       const payload = {
         query: String(message?.topic || lastResponse?.query || '').trim() || 'report',
         user_note: note,
@@ -845,10 +889,15 @@ export default function App() {
         sources: lastResponse?.sources || [],
       }
 
+      // Some environments intercept a normal POST here (seen as GET in server logs).
+      // Force fetch with explicit options to avoid accidental form submission behavior.
       const res = await fetch(url, {
         method: 'POST',
+        mode: 'cors',
+        cache: 'no-store',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, max_revisions: 1 }),
       })
 
       const data = await res.json().catch(() => ({}))
@@ -1001,7 +1050,10 @@ export default function App() {
                   type="button"
                   className="px-3 py-2 rounded-lg bg-primary text-white text-xs font-bold disabled:opacity-60"
                   disabled={statusMode === 'working'}
-                  onClick={submitRevision}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    submitRevision()
+                  }}
                 >
                   Submit revision
                 </button>
@@ -1036,64 +1088,72 @@ export default function App() {
         {/* Right Panel: Dashboard */}
         <section className="w-1/2 flex flex-col min-h-0 bg-background-dark custom-scrollbar overflow-y-auto">
           {/* Sticky Dashboard Header */}
-          <div className="sticky top-0 z-10 bg-background-dark/95 backdrop-blur-md border-b border-[#233648] p-4 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div
-                id="statusBadge"
-                className={
-                  statusMode === 'working'
-                    ? 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/20 border border-primary/30'
-                    : 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#233648] border border-[#324d67]'
-                }
-              >
-                <span
-                  id="statusIcon"
-                  className={
-                    statusMode === 'working'
-                      ? 'material-symbols-outlined text-primary text-[18px] animate-spin'
-                      : 'material-symbols-outlined text-[#92adc9] text-[18px]'
-                  }
-                >
-                  progress_activity
-                </span>
-                <span
-                  id="statusText"
-                  className={
-                    statusMode === 'working'
-                      ? 'text-xs font-bold text-primary uppercase tracking-widest'
-                      : 'text-xs font-bold text-[#92adc9] uppercase tracking-widest'
-                  }
-                >
-                  {statusMode === 'working' ? 'Researching…' : 'Idle'}
-                </span>
-              </div>
-              <div className="h-6 w-px bg-[#233648]"></div>
-              <div className="flex flex-col">
-                <span className="text-[10px] text-[#92adc9] font-bold uppercase">Iteration</span>
-                <span id="iterText" className="text-sm font-bold text-white">
-                  {iterationCount} / {maxRevisions}
-                </span>
-              </div>
-              <div className="flex flex-col ml-4">
-                <span className="text-[10px] text-[#92adc9] font-bold uppercase">Elapsed</span>
-                <span id="elapsedText" className="text-sm font-mono text-white">
-                  {fmtElapsed(elapsedMs)}
-                </span>
+          {stageKey === 'blocked' ? (
+            <div className="p-6">
+              <div className="border border-[#233648] rounded-xl bg-[#111a22] p-4 text-sm text-white/90">
+                Request blocked.
               </div>
             </div>
-            <button
-              id="exportBtn"
-              type="button"
-              onClick={onExport}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#233648] text-white hover:bg-[#324d67] text-xs font-bold transition-colors"
-            >
-              <span className="material-symbols-outlined text-[18px]">download</span>
-              Export Data
-            </button>
-          </div>
+          ) : (
+            <div>
+              <div className="sticky top-0 z-10 bg-background-dark/95 backdrop-blur-md border-b border-[#233648] p-4 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div
+                    id="statusBadge"
+                    className={
+                      statusMode === 'working'
+                        ? 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/20 border border-primary/30'
+                        : 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#233648] border border-[#324d67]'
+                    }
+                  >
+                    <span
+                      id="statusIcon"
+                      className={
+                        statusMode === 'working'
+                          ? 'material-symbols-outlined text-primary text-[18px] animate-spin'
+                          : 'material-symbols-outlined text-[#92adc9] text-[18px]'
+                      }
+                    >
+                      progress_activity
+                    </span>
+                    <span
+                      id="statusText"
+                      className={
+                        statusMode === 'working'
+                          ? 'text-xs font-bold text-primary uppercase tracking-widest'
+                          : 'text-xs font-bold text-[#92adc9] uppercase tracking-widest'
+                      }
+                    >
+                      {statusMode === 'working' ? 'Researching…' : 'Idle'}
+                    </span>
+                  </div>
+                  <div className="h-6 w-px bg-[#233648]"></div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-[#92adc9] font-bold uppercase">Iteration</span>
+                    <span id="iterText" className="text-sm font-bold text-white">
+                      {iterationCount} / {maxRevisions}
+                    </span>
+                  </div>
+                  <div className="flex flex-col ml-4">
+                    <span className="text-[10px] text-[#92adc9] font-bold uppercase">Elapsed</span>
+                    <span id="elapsedText" className="text-sm font-mono text-white">
+                      {fmtElapsed(elapsedMs)}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  id="exportBtn"
+                  type="button"
+                  onClick={onExport}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#233648] text-white hover:bg-[#324d67] text-xs font-bold transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[18px]">download</span>
+                  Export Data
+                </button>
+              </div>
 
-          {/* Execution Timeline */}
-          <div className="px-6 pt-6">
+              {/* Execution Timeline */}
+              <div className="px-6 pt-6">
             <h3 className="text-xs font-bold text-[#92adc9] uppercase tracking-widest">Execution Timeline</h3>
             <div className="grid grid-cols-6 gap-3 mt-4">
               <div
@@ -1228,7 +1288,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="p-6 space-y-8">
+              <div className="p-6 space-y-8">
             {/* Critic Snapshot */}
             <div className="space-y-4">
               <h3 className="text-xs font-bold text-[#92adc9] uppercase tracking-widest">Critic Snapshot</h3>
@@ -1661,6 +1721,8 @@ export default function App() {
               </pre>
             </div>
           </div>
+            </div>
+          )}
         </section>
       </main>
     </>

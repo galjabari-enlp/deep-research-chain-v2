@@ -81,16 +81,25 @@ async def report_node(state: ResearchState) -> ResearchState:
         if getattr(state, "revision_base_evaluation", None) is not None:
             ev = state.revision_base_evaluation
             revision_bits.append(
-                "JUDGE FEEDBACK (you MUST address these deficiencies):\n"
+                "JUDGE FEEDBACK (requirements for the revised deliverable; do not just critique):\n"
                 + f"- overall_assessment: {ev.overall_assessment}\n"
                 + f"- flags: {list(ev.flags or [])}\n"
                 + f"- suggested_improvements: {list(ev.suggested_improvements or [])}\n"
             )
         user_note = (getattr(state, "revision_user_note", "") or "").strip()
         if user_note:
-            revision_bits.append("USER REVISION NOTE (high priority):\n" + user_note)
+            revision_bits.append("USER REVISION NOTE (high priority requirements):\n" + user_note)
 
-        revision_block = ("\n\n".join(revision_bits).strip() + "\n\n") if revision_bits else ""
+        # Provide a concise "What changed" block request; backend may append it.
+        revision_bits.append(
+            "OUTPUT REQUIREMENTS:\n"
+            "- Produce a full revised report (not an evaluation).\n"
+            "- Preserve what is still valid from prior report, but fix judge/user issues.\n"
+            "- Add fresh sources when required; do not invent citations.\n"
+            "- Optionally add a final short section 'What changed' summarizing deltas.\n"
+        )
+
+        revision_block = ("\n\n".join([x for x in revision_bits if x.strip()]).strip() + "\n\n") if revision_bits else ""
 
         user = (
             f"User query: {state.query}\n\n"

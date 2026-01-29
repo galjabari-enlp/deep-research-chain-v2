@@ -72,13 +72,17 @@ async def planning_node(state: ResearchState, llm: LLMClient) -> ResearchState:
     # Revision feedback (from Judge + user)
     if getattr(state, "revision_base_evaluation", None) is not None:
         ev = state.revision_base_evaluation
-        # Keep this compact; the planner should explicitly address flags + suggested improvements.
+        # Provide structured, actionable planner input.
         feedback_parts.append(
-            "JUDGE FEEDBACK (address this explicitly):\n"
+            "JUDGE FEEDBACK (convert into actionable plan changes; treat as requirements):\n"
             + f"- recommendation: {ev.recommendation}\n"
             + f"- overall_assessment: {ev.overall_assessment}\n"
             + f"- flags: {list(ev.flags or [])}\n"
-            + f"- suggested_improvements: {list(ev.suggested_improvements or [])}\n"
+            + f"- suggested_improvements: {list(ev.suggested_improvements or [])}\n\n"
+            + "Planner instructions:\n"
+            + "1) Categorize judge feedback into actionable tasks (missing sections, weak evidence, outdated sources, unclear scope, etc.).\n"
+            + "2) State what must change vs what can remain.\n"
+            + "3) Create new/updated search queries specifically targeting missing evidence and judge-flagged gaps.\n"
         )
 
     user_note = (getattr(state, "revision_user_note", "") or "").strip()
@@ -94,6 +98,15 @@ async def planning_node(state: ResearchState, llm: LLMClient) -> ResearchState:
     # Planning inputs required for replanning
     prev_plan_json = state.plan.model_dump_json() if state.plan is not None else ""
     critic_json = state.critic.model_dump_json() if state.critic is not None else ""
+
+    prior_report = getattr(state, "revision_prior_report", None)
+    prior_report_excerpt = ""
+    if prior_report is not None:
+        # Keep excerpt small to avoid blowing prompt budget.
+        content = (prior_report.content or "").strip()
+        if len(content) > 1600:
+            content = content[:1600] + "…"
+        prior_report_excerpt = f"Prior report excerpt (what to improve):\n{content}"
 
     # compact evidence summary: titles + domains + snippets (recent)
     evidence_items: list[str] = []
@@ -112,7 +125,7 @@ async def planning_node(state: ResearchState, llm: LLMClient) -> ResearchState:
     user_prompt = _planning_user_prompt(
         query=state.query,
         plan_version=plan_version,
-        feedback=feedback,
+        feedback=(feedback + ("\n\n" + prior_report_excerpt if prior_report_excerpt else "")),
         previous_plan_json=prev_plan_json,
         critic_json=critic_json,
         evidence_summary=evidence_summary,

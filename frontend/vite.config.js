@@ -13,6 +13,9 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
+      // IMPORTANT: Vite's proxy matching is order-sensitive. Ensure /api/* routes are proxied
+      // before any more generic rules. (Leaving this comment here because 405s can happen if
+      // requests accidentally hit the Vite dev server instead of FastAPI.)
       '/api': 'http://127.0.0.1:8000',
     },
   },

@@ -40,6 +40,9 @@ class ResearchReviseRequest(BaseModel):
     query: constr(min_length=3, max_length=500)
     user_note: constr(min_length=0, max_length=1200) = ""
 
+    # Force a single revision run (hard requirement for the UI button).
+    max_revisions: conint(ge=1, le=1) = Field(default=1)
+
     # Prior public report + judge evaluation to drive revision.
     report: dict
     evaluation: dict
@@ -164,12 +167,33 @@ async def research(req: ResearchRequest) -> JudgeResponse:
     if final_state.judge_metadata is None:
         from app.graph.judge_models import JudgeMetadata
 
+        from app.core import settings
+
         final_state.judge_metadata = JudgeMetadata(
             evaluation_id=None,
             evaluated_at=None,
-            judge_model="claude-sonnet-4-20250514",
+            judge_model=str(getattr(settings, "openai_model", "") or "").strip() or None,
             processing_time_ms=None,
             evaluation_version="1.0",
+        )
+
+    if getattr(final_state, "status", "") == "blocked":
+        # Blocked runs intentionally return an empty report + a refusal message.
+        from app.graph.judge_models import PublicReport
+
+        # For blocked runs, return a minimal payload: no report/evaluation UI.
+        return JudgeResponse(
+            status="blocked",
+            report=PublicReport(
+                id="rep_blocked",
+                topic=req.query,
+                content=str(getattr(final_state, "final_user_message", "") or ""),
+                sources=[],
+                word_count=0,
+                created_at=None,
+            ),
+            evaluation=None,
+            metadata=final_state.judge_metadata,
         )
 
     return JudgeResponse(
@@ -192,6 +216,8 @@ async def report_revise(report_id: str, req: ResearchReviseRequest) -> JudgeResp
     """
 
     from app.graph.judge_models import JudgeEvaluation, JudgeMetadata, PublicReport
+    from fastapi import HTTPException
+    import traceback
 
     llm = LLMClient()
     serper = SerperClient()
@@ -199,12 +225,72 @@ async def report_revise(report_id: str, req: ResearchReviseRequest) -> JudgeResp
     graph = build_research_graph(llm=llm, serper=serper, fetcher=fetcher)
 
     # Parse prior evaluation/report defensively.
-    base_eval = JudgeEvaluation.model_validate(req.evaluation)
+    # Frontend evaluation payloads may be "lite" (missing required fields like confidence/reasoning).
+    # For revision, we only need the judge feedback fields used by planning_node (flags, suggested_improvements,
+    # overall_assessment, recommendation). So accept partial input.
+    try:
+        base_eval = JudgeEvaluation.model_validate(req.evaluation)
+    except Exception:
+        # Best-effort partial normalization.
+        ev = req.evaluation if isinstance(req.evaluation, dict) else {}
+        fa = ev.get("factual_accuracy") if isinstance(ev.get("factual_accuracy"), dict) else {}
+        co = ev.get("completeness") if isinstance(ev.get("completeness"), dict) else {}
+
+        def _pct(score: int, max_score: int = 10) -> int:
+            try:
+                return int(round((int(score) / int(max_score)) * 100))
+            except Exception:
+                return 0
+
+        fa_score = int(fa.get("score") or 0)
+        co_score = int(co.get("score") or 0)
+        base_eval = JudgeEvaluation.model_validate(
+            {
+                "factual_accuracy": {
+                    "score": fa_score,
+                    "max_score": int(fa.get("max_score") or 10),
+                    "percentage": int(fa.get("percentage") or _pct(fa_score, int(fa.get("max_score") or 10))),
+                    "reasoning": str(fa.get("reasoning") or "(missing)") or "(missing)",
+                    "strengths": list(fa.get("strengths") or []),
+                    "weaknesses": list(fa.get("weaknesses") or []),
+                },
+                "completeness": {
+                    "score": co_score,
+                    "max_score": int(co.get("max_score") or 10),
+                    "percentage": int(co.get("percentage") or _pct(co_score, int(co.get("max_score") or 10))),
+                    "reasoning": str(co.get("reasoning") or "(missing)") or "(missing)",
+                    "strengths": list(co.get("strengths") or []),
+                    "weaknesses": list(co.get("weaknesses") or []),
+                    "coverage": co.get("coverage") if isinstance(co.get("coverage"), dict) else {},
+                },
+                "overall_score": float(ev.get("overall_score") or 0),
+                "grade": str(ev.get("grade") or "F"),
+                "overall_assessment": str(ev.get("overall_assessment") or "(missing assessment)").ljust(10, ".")[:2000],
+                "recommendation": str(ev.get("recommendation") or "revise"),
+                "confidence": float(ev.get("confidence") or 0.5),
+                "flags": list(ev.get("flags") or []),
+                "suggested_improvements": list(ev.get("suggested_improvements") or []),
+            }
+        )
+
     prior_sources = list(req.sources or [])
 
     init = ResearchState(query=req.query, max_revisions=1)
     init.revision_base_evaluation = base_eval
     init.revision_user_note = (req.user_note or "").strip()
+
+    # Ensure revision uses prior context (reuse sources if provided; allow new searches as needed).
+    # Seed the state with the prior public report + sources so planning/report can build on them.
+    try:
+        init.public_report = PublicReport.model_validate(req.report) if isinstance(req.report, dict) else None
+    except Exception:
+        init.public_report = None
+
+    # Keep a copy of the prior report for planning/report prompts (what must change vs remain).
+    init.revision_prior_report = init.public_report
+
+    if prior_sources and init.public_report is not None:
+        init.public_report.sources = prior_sources
 
     # Carry a versioned report id forward.
     base_report_id = str((req.report or {}).get("id") or report_id).strip() or report_id
@@ -227,7 +313,13 @@ async def report_revise(report_id: str, req: ResearchReviseRequest) -> JudgeResp
     if prior_sources and init.public_report is not None:
         init.public_report.sources = prior_sources
 
-    raw_state = await graph.ainvoke(init, config={"recursion_limit": 120})
+    try:
+        raw_state = await graph.ainvoke(init, config={"recursion_limit": 120})
+    except Exception as e:
+        tb = traceback.format_exc(limit=50)
+        logger.exception("/revise graph.ainvoke failed: %s", e)
+        raise HTTPException(status_code=500, detail={"message": "revise failed", "error": str(e), "traceback": tb})
+
     final_state = ResearchState(**raw_state) if isinstance(raw_state, dict) else raw_state
 
     if final_state.public_report is None:
@@ -237,10 +329,12 @@ async def report_revise(report_id: str, req: ResearchReviseRequest) -> JudgeResp
         final_state.judge_evaluation = base_eval
 
     if final_state.judge_metadata is None:
+        from app.core import settings
+
         final_state.judge_metadata = JudgeMetadata(
             evaluation_id=None,
             evaluated_at=None,
-            judge_model="claude-sonnet-4-20250514",
+            judge_model=str(getattr(settings, "openai_model", "") or "").strip() or None,
             processing_time_ms=None,
             evaluation_version="1.0",
         )
@@ -439,7 +533,7 @@ async def research_stream(query: constr(min_length=3, max_length=500), max_revis
             init_state = ResearchState(query=query, max_revisions=max_revisions)
 
             # Initial event (send ASAP so browsers don't treat the stream as dead/hung).
-            yield f"data: {json.dumps({'type': 'state', 'stage': 'planning', 'iteration_count': 0, 'trace': [], 'critic': None, 'ts_ms': ts_ms()})}\n\n"
+            yield f"data: {json.dumps({'type': 'state', 'stage': 'policy_guard', 'iteration_count': 0, 'trace': [], 'critic': None, 'status': 'processing', 'ts_ms': ts_ms()})}\n\n"
 
             # Force a flush for servers/proxies that buffer small chunks.
             yield ": init\n" + (" " * 2048) + "\n\n"
@@ -468,7 +562,7 @@ async def research_stream(query: constr(min_length=3, max_length=500), max_revis
                     continue
 
                 name = (event.get("name") or "").strip()
-                if name not in {"planning", "search", "reasoning", "critic_step", "report_step", "judge_step"}:
+                if name not in {"policy_guard", "planning", "search", "reasoning", "critic_step", "report_step", "judge_step"}:
                     continue
 
                 raw_out = event.get("data", {}).get("output")
@@ -503,6 +597,7 @@ async def research_stream(query: constr(min_length=3, max_length=500), max_revis
                             "iteration_count": iter_count,
                             "trace": trace or [],
                             "critic": critic,
+                            "status": getattr(state, "status", None),
                             "ts_ms": ts_ms(),
                         }
                     )
@@ -515,6 +610,18 @@ async def research_stream(query: constr(min_length=3, max_length=500), max_revis
                 # Build a JSON-safe final payload.
                 # NOTE: `ResearchResponse` currently has no `from_state()` helper; stream the state-derived fields directly.
                 try:
+                    if getattr(final_state_obj, "status", "") == "blocked":
+                        response = {
+                            "query": query,
+                            "iteration_count": getattr(final_state_obj, "iteration_count", 0),
+                            "trace": getattr(final_state_obj, "trace", None) or [],
+                            "status": "blocked",
+                            "final_user_message": getattr(final_state_obj, "final_user_message", "") or "",
+                            "sources": [],
+                        }
+                        yield f"data: {json.dumps({'type': 'final', 'response': response})}\n\n"
+                        return
+
                     report_obj = getattr(final_state_obj, "report", None)
                     plan_obj = getattr(final_state_obj, "plan", None)
                     critic_obj = getattr(final_state_obj, "critic", None)

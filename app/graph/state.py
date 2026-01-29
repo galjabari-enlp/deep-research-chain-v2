@@ -19,6 +19,12 @@ class ResearchState:
     # Inputs
     query: str
 
+    # Policy
+    # NOTE: keep optional to preserve backwards-compat with existing tests/clients.
+    status: str = "processing"  # "blocked" | "processing" | "complete"
+    policy: object | None = None  # app.graph.policy_models.PolicyResult (kept as object to avoid pydantic import cycles)
+    final_user_message: str = ""
+
     # Planning
     plan: Optional[ResearchPlan] = None
     plan_history: List[ResearchPlan] = field(default_factory=list)
@@ -64,10 +70,13 @@ class ResearchState:
     prior_evaluations: List[JudgeEvaluation] = field(default_factory=list)
     user_revision_requests: List[str] = field(default_factory=list)
 
-    # Revision context injected by /research/revise: prior judge feedback + optional user note.
+    # Revision context injected by /api/reports/{id}/revise
     # These are first-class inputs to planning + report generation.
     revision_base_evaluation: Optional[JudgeEvaluation] = None
     revision_user_note: str = ""
+
+    # Optional: keep the prior public report content available to planning/report for "what must change" guidance.
+    revision_prior_report: Optional[PublicReport] = None
 
     # Trace
     trace: List[str] = field(default_factory=list)
