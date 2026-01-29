@@ -630,7 +630,8 @@ export default function App() {
                 evaluation: finalData.evaluation || undefined,
                 judgeMetadata: finalData.metadata || undefined,
                 topic: finalData.report?.topic || finalData.query || undefined,
-                reportId: finalData.report?.id || undefined,
+                // Backends in this repo use either `report.id` or `report.report_id`.
+                reportId: finalData.report?.id || finalData.report?.report_id || undefined,
                 statusText: 'Done.',
               }
             : m,
@@ -719,8 +720,14 @@ export default function App() {
 
   const handlePublish = useCallback(
     async (message) => {
-      const reportId = message?.reportId
-      if (!reportId) return
+      // If the backend doesn't provide an id, publish the latest report anyway using a deterministic local id.
+      const reportId = String(
+        message?.reportId ||
+          lastResponse?.report?.id ||
+          lastResponse?.report?.report_id ||
+          lastResponse?.metadata?.evaluation_id ||
+          `local-${Date.now()}`,
+      )
 
       // optimistic UI
       setPublishByReportId((prev) => ({

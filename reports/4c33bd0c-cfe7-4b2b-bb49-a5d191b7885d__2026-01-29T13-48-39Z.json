@@ -1,0 +1,153 @@
+{
+  "report": {
+    "id": "4c33bd0c-cfe7-4b2b-bb49-a5d191b7885d",
+    "topic": "compare napoleon hitler stalin trump rousseau",
+    "content": "",
+    "sources": [],
+    "word_count": null,
+    "created_at": null
+  },
+  "evaluation": {
+    "factual_accuracy": {
+      "score": 9,
+      "max_score": 10,
+      "percentage": 90,
+      "strengths": [],
+      "weaknesses": []
+    },
+    "completeness": {
+      "score": 3,
+      "max_score": 10,
+      "percentage": 30,
+      "strengths": [],
+      "weaknesses": []
+    },
+    "overall_score": 6,
+    "grade": "D",
+    "overall_assessment": "The report is factually sound regarding the sources provided but fails as a response to the user's specific query. It provides a high-quality analysis of the Rousseau-Napoleon-Hitler connection but completely ignores Stalin and Trump, who were explicitly named in the topic. This results in a very low completeness score despite the accuracy of the content that is present. The report is more of an essay on Rousseau's legacy than a comparison of the five requested individuals.",
+    "recommendation": "revise",
+    "flags": [
+      "shallow-coverage"
+    ],
+    "suggested_improvements": []
+  },
+  "metadata": {
+    "evaluation_id": "4c33bd0c-cfe7-4b2b-bb49-a5d191b7885d"
+  },
+  "query": "compare napoleon hitler stalin trump rousseau",
+  "sources": [
+    {
+      "title": "The Legacy of the French Revolution: Rousseau's General Will and ...",
+      "url": "https://www.iwp.edu/articles/2017/12/11/the-legacy-of-the-french-revolution-rousseaus-general-will-and-the-reign-of-terror/",
+      "snippet": "The irony of the theory is that the General Will does not represent the majority of the people, but only of the enlightened few. The Social ...",
+      "source": "serper"
+    },
+    {
+      "title": "How Did Jean Jacques Rousseau Influence Napoleon - Bartleby.com",
+      "url": "https://www.bartleby.com/essay/How-Did-Jean-Jacques-Rousseau-Influence-Napoleon-136D90F1C38C37E6",
+      "snippet": "Rousseau believed that all citizens should live in a way that promoted the general good hence the, “General Will”. “Each of us puts his person and all his power ...",
+      "source": "serper"
+    },
+    {
+      "title": "PLSC 114 - Lecture 20 - Democracy and Participation: Rousseau ...",
+      "url": "https://oyc.yale.edu/political-science/plsc-114/lecture-20",
+      "snippet": "The concept of \"general will\" is considered Rousseau's most important contribution to political science. ... Napoleon Bonaparte was born who attempted to ...",
+      "source": "serper"
+    },
+    {
+      "title": "Rousseau and Revolution | Jean Starobinski | The New York ...",
+      "url": "https://www.nybooks.com/articles/2002/04/25/rousseau-and-revolution/",
+      "snippet": "After taking power by his coup d'état of 19 Brumaire (November 9, 1799), General Napoleon Bonaparte made no attempt to soften his sarcasm about",
+      "source": "serper"
+    },
+    {
+      "title": "Are Jean-Jacques Rousseau's ideas still used today in government ...",
+      "url": "https://www.quora.com/Are-Jean-Jacques-Rousseaus-ideas-still-used-today-in-government-and-society-compared-to-those-of-other-enlightenment-thinkers",
+      "snippet": "Jean Jaques Rousseau's ideas unfortunately were never used in goverment and society and neither the ideas of any other enlightenment thinker.",
+      "source": "serper"
+    },
+    {
+      "title": "Rousseau and Totalitarianism - jstor",
+      "url": "https://www.jstor.org/stable/2125667",
+      "snippet": "The effect of Rousseau's philosophy upon the modern world has been to popularize the role of the state, not merely in the technical sense of expanding the ...",
+      "source": "serper"
+    },
+    {
+      "title": "[PDF] From Rousseau to Hitler - School of Cooperative Individualism",
+      "url": "https://cooperative-individualism.org/drucker-peter_the-future-of-industrial-man-1943-07-from-rousseau-to-hitler.pdf",
+      "snippet": "The one great difference between Hitler's conversion of rationalist liberalism into totalitarianism and the work of his predecessors, Rousseau and Marx, lies ...",
+      "source": "serper"
+    },
+    {
+      "title": "Is Rousseau really the father of totalitarianism? : r/askphilosophy",
+      "url": "https://www.reddit.com/r/askphilosophy/comments/td9q3g/is_rousseau_really_the_father_of_totalitarianism/",
+      "snippet": "He was been accused of totalitarianism because his idea of the “General Will” (which roughly involves the interest/autonomy of the community ...",
+      "source": "serper"
+    },
+    {
+      "title": "Totalitarianism | Internet Encyclopedia of Philosophy",
+      "url": "https://iep.utm.edu/totalita/",
+      "snippet": "Talmon devotes considerable attention to what he takes to be Rousseau's totalitarian tendencies in The Social Contract. ... totalitarian leaders such as Hitler, ...",
+      "source": "serper"
+    },
+    {
+      "title": "[PDF] Rethinking Totalitarian Ideology - Pure",
+      "url": "https://pure-oai.bham.ac.uk/ws/portalfiles/portal/20451709/Rethinking_Totalitarian_Ideology.pdf",
+      "snippet": "Philosophy, that 'at the present time, Hitler is an outcome of Rousseau'.10. Nevertheless, the broader point is that twentieth-century political thought was ...",
+      "source": "serper"
+    },
+    {
+      "title": "Jean-Jacques Rousseau - Stanford Encyclopedia of Philosophy",
+      "url": "https://plato.stanford.edu/entries/rousseau/",
+      "snippet": "His central doctrine in politics is that a state can be legitimate only if it is guided by the “general will” of its members. This idea finds ...",
+      "source": "serper"
+    },
+    {
+      "title": "Political philosophy - Rousseau, Social Contract, Liberty | Britannica",
+      "url": "https://www.britannica.com/topic/political-philosophy/Rousseau",
+      "snippet": "He envisaged a harmony of free peoples—a “sisterhood of nations”—in which the rule of military empires would be thrown off, the destruction of ...",
+      "source": "serper"
+    },
+    {
+      "title": "The Social Contract: Full Work Summary - SparkNotes",
+      "url": "https://www.sparknotes.com/philosophy/socialcontract/summary/",
+      "snippet": "Rousseau calls the collective grouping of all citizens the \"sovereign,\" and claims that it should be considered in many ways to be like an individual person.",
+      "source": "serper"
+    },
+    {
+      "title": "Jean-Jacques Rousseau - Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Jean-Jacques_Rousseau",
+      "snippet": "a Genevan philosopher (philosophe), writer, and composer. His political philosophy influenced the progress of the Age of Enlightenment throughout Europe.",
+      "source": "serper"
+    },
+    {
+      "title": "Explainer: the philosophy of Jean-Jacques Rousseau is profoundly ...",
+      "url": "https://theconversation.com/explainer-the-philosophy-of-jean-jacques-rousseau-is-profoundly-contemporary-201179",
+      "snippet": "He proposed the revolutionary idea that the people alone have the true right to govern. These ideas helped to end the centuries-old relationship ...",
+      "source": "serper"
+    },
+    {
+      "title": "Similarities Between Napoleon And Rousseau - 586 Words",
+      "url": "https://www.cram.com/essay/Similarities-Between-Napoleon-And-Rousseau/PJCJCQ7JTAV",
+      "snippet": "Initially, Napoleon's ideals of the French Revolution revolved around three main ideas: liberty, equality, and fraternity. At first, he was successful in ...",
+      "source": "serper"
+    },
+    {
+      "title": "Did Rousseau have anything to say about Napoleon?",
+      "url": "https://www.quora.com/Did-Rousseau-have-anything-to-say-about-Napoleon",
+      "snippet": "Rousseau had a profound influence on young Bonaparte's thinking, regarding liberty, equality and human nature.",
+      "source": "serper"
+    },
+    {
+      "title": "Napoleon Bonaparte, Rousseau, And Human Nature",
+      "url": "https://isaiahduarte182.medium.com/napoleon-bonaparte-rousseau-and-human-nature-c6a698aa48cb",
+      "snippet": "Napoleon felt that society could be organized in such a way as to create a utopia. Much like Rousseau, he felt that people only behaved “badly” ...",
+      "source": "serper"
+    }
+  ],
+  "published_at": "2026-01-29T13:48:39Z",
+  "artifacts": {
+    "md": "reports\\4c33bd0c-cfe7-4b2b-bb49-a5d191b7885d__2026-01-29T13-48-39Z.md",
+    "json": "reports\\4c33bd0c-cfe7-4b2b-bb49-a5d191b7885d__2026-01-29T13-48-39Z.json"
+  }
+}

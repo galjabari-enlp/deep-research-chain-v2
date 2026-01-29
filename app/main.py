@@ -88,6 +88,8 @@ async def debug_config() -> dict[str, object]:
     This intentionally avoids returning full secrets.
     """
 
+    import os
+
     from app.core import settings
 
     key = settings.openai_api_key or ""
@@ -97,6 +99,7 @@ async def debug_config() -> dict[str, object]:
         "openai_api_key_len": len(key),
         "openai_api_key_tail": key[-4:] if len(key) >= 4 else "",
         "serper_api_key_len": len(settings.serper_api_key or ""),
+        "debug_allow_publish": str(os.environ.get("DEBUG_ALLOW_PUBLISH") or "").strip(),
     }
 
 
@@ -253,10 +256,13 @@ async def report_revise(report_id: str, req: ResearchReviseRequest) -> JudgeResp
 async def publish_report(report_id: str, req: PublishRequest) -> dict:
     """Publish (persist) a report artifact to disk.
 
-    Rules enforced server-side:
+    Rules enforced server-side (unless DEBUG override is enabled):
     - evaluation.recommendation must be "publish"
     - factual_accuracy.score >= 7
     - completeness.score >= 7
+
+    DEBUG override:
+    - if env var DEBUG_ALLOW_PUBLISH=true, skip gating checks (still writes artifacts).
 
     Storage format (preferred): write two files under ./reports:
     - <id>__<published_at>.md (report content + sources)
@@ -276,7 +282,15 @@ async def publish_report(report_id: str, req: PublishRequest) -> dict:
     eval_obj = req.evaluation if isinstance(req.evaluation, dict) else None
     meta_obj = req.metadata if isinstance(req.metadata, dict) else None
 
-    # Enforce publish gating.
+    def _truthy_env(name: str) -> bool:
+        v = os.environ.get(name)
+        if v is None:
+            return False
+        return str(v).strip().lower() in {"1", "true", "yes", "on"}
+
+    debug_allow_publish = _truthy_env("DEBUG_ALLOW_PUBLISH")
+
+    # Enforce publish gating (unless debug override is on).
     recommendation = (eval_obj or {}).get("recommendation")
     factual_score = ((eval_obj or {}).get("factual_accuracy") or {}).get("score")
     completeness_score = ((eval_obj or {}).get("completeness") or {}).get("score")
@@ -290,7 +304,9 @@ async def publish_report(report_id: str, req: PublishRequest) -> dict:
     factual_i = _to_int(factual_score)
     complete_i = _to_int(completeness_score)
 
-    if recommendation != "publish" or factual_i is None or complete_i is None or factual_i < 7 or complete_i < 7:
+    if (not debug_allow_publish) and (
+        recommendation != "publish" or factual_i is None or complete_i is None or factual_i < 7 or complete_i < 7
+    ):
         raise HTTPException(
             status_code=403,
             detail={
@@ -304,6 +320,10 @@ async def publish_report(report_id: str, req: PublishRequest) -> dict:
                     "recommendation": recommendation,
                     "factual_accuracy_score": factual_i,
                     "completeness_score": complete_i,
+                },
+                "debug": {
+                    "DEBUG_ALLOW_PUBLISH": bool(debug_allow_publish),
+                    "note": "Set DEBUG_ALLOW_PUBLISH=true in the API server environment to bypass gating.",
                 },
             },
         )

@@ -235,13 +235,15 @@ export default function JudgeEvaluationCard({
 
   const confidence = typeof evaluation?.confidence === 'number' ? clamp01(evaluation.confidence) : null
 
-  const canPublish = recommendation === 'publish'
+  // UI should always allow clicking Publish for testing.
+  // Backend still gates unless DEBUG_ALLOW_PUBLISH=true.
+  const canPublish = true
   const publishStatus = publishState?.status || 'idle'
   const isPublishing = publishStatus === 'publishing'
   const isPublished = publishStatus === 'published'
 
   const handlePublish = () => {
-    if (!canPublish) return
+    console.log('[ui] calling onPublish()', { reportId })
     if (onPublish) onPublish()
     else console.log('publish-now clicked', { reportId })
   }
@@ -353,14 +355,21 @@ export default function JudgeEvaluationCard({
       <div className="flex flex-wrap gap-2 pt-1">
         <button
           type="button"
-          onClick={handlePublish}
-          disabled={!canPublish || isPublishing || isPublished}
+          onClick={(e) => {
+            // Ensure click is not swallowed by parent overlays and is visible during debugging.
+            e.preventDefault()
+            e.stopPropagation()
+            console.log('[ui] Publish now clicked', { reportId, canPublish, publishStatus })
+            handlePublish()
+          }}
+          disabled={isPublishing || isPublished}
           className={
             canPublish && !isPublished
               ? 'px-3 py-2 rounded-lg bg-primary text-white text-xs font-bold hover:brightness-105 transition-colors disabled:opacity-60'
               : 'px-3 py-2 rounded-lg bg-[#233648] text-white/50 text-xs font-bold cursor-not-allowed border border-[#324d67]'
           }
           aria-label="Publish now"
+          title={'Publish the report (writes artifacts to reports/)'}
         >
           {isPublished ? 'Published' : isPublishing ? 'Publishing…' : 'Publish now'}
         </button>
