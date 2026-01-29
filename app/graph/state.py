@@ -60,9 +60,14 @@ class ResearchState:
     judge_evaluation: Optional[JudgeEvaluation] = None
     judge_metadata: Optional[JudgeMetadata] = None
 
-    # Revision-loop support (future): persist past evaluations + user feedback
+    # Revision-loop support: persist past evaluations + user feedback
     prior_evaluations: List[JudgeEvaluation] = field(default_factory=list)
     user_revision_requests: List[str] = field(default_factory=list)
+
+    # Revision context injected by /research/revise: prior judge feedback + optional user note.
+    # These are first-class inputs to planning + report generation.
+    revision_base_evaluation: Optional[JudgeEvaluation] = None
+    revision_user_note: str = ""
 
     # Trace
     trace: List[str] = field(default_factory=list)

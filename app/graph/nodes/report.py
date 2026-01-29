@@ -62,10 +62,12 @@ async def report_node(state: ResearchState) -> ResearchState:
 
         system = (
             "You are a careful research writer. Write polished, natural prose. "
-            "Do NOT use bold label prefixes like '**X**:' or dictionary-entry field labels. "
             "Write complete sentences and paragraphs. "
+            "Do NOT use markdown formatting (no '**bold**', no headings like '##', no bullet lists). "
+            "Do NOT put section titles inside the paragraph text (e.g., do not write '**Title:** ...'). "
+            "Instead, put the section title ONLY in the JSON 'heading' field. "
             "Only cite from the provided sources. "
-            "You must return structured JSON blocks, and each block must include a short sub-section heading."
+            "You must return structured JSON blocks, and each block must include a short sub-section heading in the 'heading' field."
         )
 
         source_lines: list[str] = []
@@ -75,12 +77,29 @@ async def report_node(state: ResearchState) -> ResearchState:
                 snip = snip[:280] + "…"
             source_lines.append(f"S{idx}. {r.title} | {r.url} | {snip}")
 
+        revision_bits: list[str] = []
+        if getattr(state, "revision_base_evaluation", None) is not None:
+            ev = state.revision_base_evaluation
+            revision_bits.append(
+                "JUDGE FEEDBACK (you MUST address these deficiencies):\n"
+                + f"- overall_assessment: {ev.overall_assessment}\n"
+                + f"- flags: {list(ev.flags or [])}\n"
+                + f"- suggested_improvements: {list(ev.suggested_improvements or [])}\n"
+            )
+        user_note = (getattr(state, "revision_user_note", "") or "").strip()
+        if user_note:
+            revision_bits.append("USER REVISION NOTE (high priority):\n" + user_note)
+
+        revision_block = ("\n\n".join(revision_bits).strip() + "\n\n") if revision_bits else ""
+
         user = (
             f"User query: {state.query}\n\n"
-            "Sources (use these only):\n"
+            + revision_block
+            + "Sources (use these only):\n"
             + "\n".join(source_lines)
             + "\n\n"
-            "Task: produce 3-8 blocks. Each block must have a short heading and one paragraph of prose. "
+            "Task: produce 3-8 blocks that fully answer the user query. Each block must have a short heading and one paragraph of prose. "
+            "IMPORTANT: the paragraph text must NOT contain the heading or any markdown like '**Heading:**'. "
             "After each paragraph, include 1-4 citations referencing the sources by id (S1..S12).\n"
             "Return ONLY valid JSON matching this schema:\n"
             "{\n"
@@ -91,9 +110,9 @@ async def report_node(state: ResearchState) -> ResearchState:
             "  ]\n"
             "}\n"
             "Rules:\n"
-            "- Each block must include 'heading' (2-6 words) for the sub-section title; no markdown, no trailing colon.\n"
-            "- 'text' must be plain prose without leading labels like '**Something**:'\n"
-            "- Do not use markdown headings; headings must go in the JSON 'heading' field only.\n"
+            "- Each block must include 'heading' (2-8 words) for the sub-section title; no markdown, no trailing colon.\n"
+            "- 'text' must be plain prose and MUST NOT start with or contain a heading label (no '**Something**:' and no 'Something:' prefix).\n"
+            "- Use ONLY the provided sources; do not invent facts or citations.\n"
             "- Each citation id must correspond to one of the provided sources.\n"
         )
 

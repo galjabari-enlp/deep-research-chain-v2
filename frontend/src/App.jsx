@@ -141,6 +141,10 @@ export default function App() {
   // Chat (controlled by App so it can drive + reflect backend state)
   const [maxRevisions, setMaxRevisions] = useState(10)
   const [draft, setDraft] = useState('')
+
+  // Publish UI state (keyed by reportId)
+  const [publishByReportId, setPublishByReportId] = useState({})
+
   const [messages, setMessages] = useState(() => [
     {
       id: 'seed-user',
@@ -162,6 +166,11 @@ export default function App() {
   const [critic, setCritic] = useState(null)
   const [sources, setSources] = useState([])
   const [report, setReport] = useState({ key_findings: [], evidence_and_sources: [], limitations: [] })
+  const [evaluation, setEvaluation] = useState(null)
+  const [judgeMetadata, setJudgeMetadata] = useState(null)
+
+  // Revision UI state
+  const [reviseUI, setReviseUI] = useState({ open: false, messageId: null, text: '' })
 
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -182,6 +191,8 @@ export default function App() {
       reasoning: 'search',
       critic_step: 'critic_step',
       report_step: 'report_step',
+      judge_step: 'judge_step',
+      published: 'published',
     }),
     [],
   )
@@ -192,8 +203,18 @@ export default function App() {
     const s = new Set()
     if (stageKey && stageKey !== 'planning') s.add('planning')
     if (stageKey && stageKey !== 'search' && stageKey !== 'planning') s.add('search')
-    if (stageKey && stageKey === 'report_step') s.add('critic_step')
-    if (stageKey === 'report_step') s.add('report_step')
+
+    // Anything at/after report implies critic is complete.
+    if (stageKey && (stageKey === 'report_step' || stageKey === 'judge_step')) s.add('critic_step')
+
+    // Anything at/after judge implies report is complete.
+    if (stageKey && (stageKey === 'report_step' || stageKey === 'judge_step')) s.add('report_step')
+
+    // Judge completes only when we are at judge step (or beyond, if we add more in the future).
+    if (stageKey === 'judge_step' || stageKey === 'published') s.add('judge_step')
+
+    if (stageKey === 'published') s.add('published')
+
     return s
   }, [stageKey])
 
@@ -225,6 +246,8 @@ export default function App() {
     setCritic(null)
     setSources([])
     setReport({ key_findings: [], evidence_and_sources: [], limitations: [] })
+    setEvaluation(null)
+    setJudgeMetadata(null)
     setErrorMsg('')
     setStage(null)
     setIterationCount(0)
@@ -289,6 +312,10 @@ export default function App() {
   }, [])
 
   const runResearch = useCallback(async () => {
+    // Start a fresh run; do not let previous run evaluation bleed into the next.
+    setEvaluation(null)
+    setJudgeMetadata(null)
+
     stopCurrentRun()
     setErrorMsg('')
 
@@ -320,11 +347,20 @@ export default function App() {
         role: 'agent',
         text: 'Working on it…',
         statusText: 'Starting…',
+        // Ensure we never render stale evaluation while the new run is in progress.
+        evaluation: undefined,
+        judgeMetadata: undefined,
+        reportBlocks: undefined,
+        topic: undefined,
+        reportId: undefined,
       },
     ])
 
     try {
       const base = API_BASE || window.location.origin
+
+      // SSE endpoint is `/research/stream` (see backend OpenAPI). If you see a 404 + readyState=0,
+      // it typically means the frontend is pointing at a non-existent stream route.
       const streamUrl = `${base}/research/stream?query=${encodeURIComponent(q)}&max_revisions=${encodeURIComponent(String(maxRev))}`
 
       // Cache-bust to avoid any intermediary/browser caching oddities for SSE.
@@ -333,10 +369,13 @@ export default function App() {
       const es = new EventSource(streamUrlNoCache)
       runRef.current.es = es
 
-      const finalData = await new Promise((resolve, reject) => {
+      let finalData = await new Promise((resolve, reject) => {
         es.onmessage = (ev) => {
           try {
             const msg = JSON.parse(ev.data)
+
+            // TEMP DEBUG: print SSE payloads so we can verify whether `evaluation` is actually sent.
+            console.log('[SSE]', msg)
 
             if (msg.type === 'state') {
               if (msg.stage) setStage(msg.stage)
@@ -347,6 +386,15 @@ export default function App() {
                 // (We may render `execution_trace` later if desired.)
               }
               if (msg.critic) setCritic(msg.critic)
+
+              // Some backends may stream evaluation separately; wire it defensively.
+              // When this happens, treat it as the judge stage.
+              if (msg.evaluation) {
+                setEvaluation(msg.evaluation)
+                if (msg.metadata) setJudgeMetadata(msg.metadata)
+                setStage('judge_step')
+              }
+
               if (msg.plan && msg.stage === 'planning') {
                 // Show plan objective in chat once it’s known
                 const summary = msg.plan.research_objective || ''
@@ -384,6 +432,12 @@ export default function App() {
               return
             }
 
+            // Defensive: some servers may emit final payload directly on the wire.
+            if (msg.status === 'complete' && (msg.report || msg.evaluation)) {
+              resolve(msg)
+              return
+            }
+
             if (msg.type === 'error') {
               reject(new Error(msg.message || 'stream error'))
             }
@@ -392,9 +446,163 @@ export default function App() {
           }
         }
 
-        es.onerror = () => reject(new Error('SSE connection error'))
+        es.onerror = (ev) => {
+          // EventSource errors are noisy and opaque; log current readyState to diagnose transient disconnects.
+          // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
+          console.warn('[SSE ERROR]', { readyState: es.readyState, ev })
+          reject(new Error(`SSE connection error (readyState=${es.readyState})`))
+        }
       })
 
+      // NOTE: backend is currently inconsistent: sometimes it sets top-level `evaluation`,
+      // sometimes only writes judge info into `execution_trace`.
+      //
+      // Rule: ALWAYS prefer the evaluation derived from `execution_trace` if present, because
+      // the top-level `evaluation` can be stale (from a prior run).
+      finalData = {
+        ...(finalData || {}),
+        evaluation: finalData?.evaluation || null,
+        metadata: finalData?.metadata || null,
+      }
+
+      // If judge info is present in execution_trace, derive evaluation and overwrite any stale top-level one.
+      if (finalData.execution_trace && typeof finalData.execution_trace === 'object') {
+        try {
+          const iters = Array.isArray(finalData.execution_trace.iterations) ? finalData.execution_trace.iterations : []
+          const flatItems = []
+          for (const it of iters) {
+            const sections = Array.isArray(it?.sections) ? it.sections : []
+            for (const sec of sections) {
+              const items = Array.isArray(sec?.items) ? sec.items : []
+              for (const item of items) flatItems.push(item)
+            }
+          }
+
+          const judgeItem = [...flatItems]
+            .reverse()
+            .find((x) => typeof x?.label === 'string' && String(x.label).toLowerCase().startsWith('judge:'))
+
+          if (judgeItem && judgeItem.data && typeof judgeItem.data === 'object') {
+            const d = judgeItem.data
+
+            // Parse from label: "Judge: publish (overall=9.65, grade=A)"
+            const label = String(judgeItem.label || '')
+            const mRec = label.match(/^Judge:\s*(publish|revise|reject)\b/i)
+            const mOverall = label.match(/overall=([0-9]+(?:\.[0-9]+)?)/i)
+            const mGrade = label.match(/grade=([A-F][+-]?)/i)
+
+            const recommendation = mRec ? mRec[1].toLowerCase() : typeof d.recommendation === 'string' ? d.recommendation : null
+            const overall = mOverall ? Number(mOverall[1]) : typeof d.overall_score === 'number' ? d.overall_score : null
+            const grade = mGrade ? mGrade[1] : typeof d.grade === 'string' ? d.grade : null
+
+            const accuracy = typeof d.accuracy === 'number' ? d.accuracy : null
+            const completeness = typeof d.completeness === 'number' ? d.completeness : null
+
+            const maxScore = 10
+            const mkRubric = (score) => ({
+              score: typeof score === 'number' ? score : 0,
+              max_score: maxScore,
+              percentage: typeof score === 'number' ? Math.round((score / maxScore) * 100) : 0,
+              strengths: [],
+              weaknesses: [],
+            })
+
+            finalData.evaluation = {
+              factual_accuracy: mkRubric(accuracy),
+              completeness: mkRubric(completeness),
+              overall_score:
+                typeof overall === 'number'
+                  ? overall
+                  : typeof accuracy === 'number' && typeof completeness === 'number'
+                    ? (accuracy + completeness) / 2
+                    : 0,
+              grade: grade || undefined,
+              overall_assessment: typeof judgeItem.detail === 'string' ? judgeItem.detail : undefined,
+              recommendation: recommendation || undefined,
+              confidence: undefined,
+              flags: Array.isArray(d.flags) ? d.flags.map(String) : [],
+              suggested_improvements: [],
+            }
+
+            finalData.metadata = {
+              ...(finalData.metadata || {}),
+              evaluation_id: typeof d.evaluation_id === 'string' ? d.evaluation_id : finalData.metadata?.evaluation_id,
+            }
+          }
+        } catch {
+          // ignore execution_trace parse errors
+        }
+      }
+
+      // If no execution_trace-derived evaluation exists, fall back to streamed state values.
+      if (!finalData.evaluation && evaluation) finalData.evaluation = evaluation
+      if (!finalData.metadata && judgeMetadata) finalData.metadata = judgeMetadata
+
+      // Fallback: derive a minimal evaluation from the rich execution_trace if the top-level
+      // `evaluation` is null (backend is currently emitting judge data only inside execution_trace).
+      if (!finalData.evaluation && finalData.execution_trace && typeof finalData.execution_trace === 'object') {
+        try {
+          const iters = Array.isArray(finalData.execution_trace.iterations) ? finalData.execution_trace.iterations : []
+          const flatItems = []
+          for (const it of iters) {
+            const sections = Array.isArray(it?.sections) ? it.sections : []
+            for (const sec of sections) {
+              const items = Array.isArray(sec?.items) ? sec.items : []
+              for (const item of items) flatItems.push(item)
+            }
+          }
+
+          const judgeItem = [...flatItems]
+            .reverse()
+            .find((x) => typeof x?.label === 'string' && String(x.label).toLowerCase().startsWith('judge:'))
+
+          if (judgeItem && judgeItem.data && typeof judgeItem.data === 'object') {
+            const d = judgeItem.data
+            const overall = typeof d.overall_score === 'number' ? d.overall_score : null
+            const grade = typeof d.grade === 'string' ? d.grade : null
+            const recommendation = typeof d.recommendation === 'string' ? d.recommendation : null
+
+            // Support the "lite" data currently present in your payload: accuracy/completeness ints.
+            const accuracy = typeof d.accuracy === 'number' ? d.accuracy : null
+            const completeness = typeof d.completeness === 'number' ? d.completeness : null
+
+            const maxScore = 10
+            const mkRubric = (score) => ({
+              score: typeof score === 'number' ? score : 0,
+              max_score: maxScore,
+              percentage: typeof score === 'number' ? Math.round((score / maxScore) * 100) : 0,
+              strengths: [],
+              weaknesses: [],
+            })
+
+            finalData.evaluation = {
+              factual_accuracy: mkRubric(accuracy),
+              completeness: mkRubric(completeness),
+              overall_score:
+                typeof overall === 'number'
+                  ? overall
+                  : typeof accuracy === 'number' && typeof completeness === 'number'
+                    ? (accuracy + completeness) / 2
+                    : 0,
+              grade: grade || undefined,
+              overall_assessment: typeof judgeItem.detail === 'string' ? judgeItem.detail : undefined,
+              recommendation: recommendation || undefined,
+              confidence: undefined,
+              flags: Array.isArray(d.flags) ? d.flags.map(String) : [],
+              suggested_improvements: [],
+            }
+
+            finalData.metadata = {
+              ...(finalData.metadata || {}),
+              evaluation_id: typeof d.evaluation_id === 'string' ? d.evaluation_id : finalData.metadata?.evaluation_id,
+            }
+          }
+        } catch {
+          // ignore fallback parsing errors
+        }
+      }
+
+      console.log('[FINAL MERGED]', finalData)
       setLastResponse(finalData)
 
       setIterationCount(finalData.iteration_count ?? 0)
@@ -402,10 +610,14 @@ export default function App() {
       setSources(finalData.sources || [])
       setCritic(finalData.critic || null)
       setReport(finalData.report || { key_findings: [], evidence_and_sources: [], limitations: [] })
+      setEvaluation(finalData.evaluation || null)
+      setJudgeMetadata(finalData.metadata || null)
 
-      setStage('report_step')
+      // If the backend includes evaluation (or we derived it), it is treated as the judge stage.
+      setStage(finalData.evaluation ? 'judge_step' : 'report_step')
 
-      // When the run completes, show the final report in the chat as well (rich rendering).
+      // When the run completes, show the final report in the chat as well (rich rendering)
+      // and optionally append the judge evaluation card.
       const blocks = (finalData.report && Array.isArray(finalData.report.blocks) && finalData.report.blocks) || []
 
       setMessages((prev) =>
@@ -415,6 +627,10 @@ export default function App() {
                 ...m,
                 text: 'Final report ready.',
                 reportBlocks: blocks,
+                evaluation: finalData.evaluation || undefined,
+                judgeMetadata: finalData.metadata || undefined,
+                topic: finalData.report?.topic || finalData.query || undefined,
+                reportId: finalData.report?.id || undefined,
                 statusText: 'Done.',
               }
             : m,
@@ -427,7 +643,7 @@ export default function App() {
     } finally {
       stopCurrentRun()
     }
-  }, [API_BASE, addMessage, draft, maxRevisions, resetPanelsForNewRun, stopCurrentRun])
+  }, [API_BASE, addMessage, draft, maxRevisions, resetPanelsForNewRun, stopCurrentRun, evaluation, judgeMetadata])
 
   useEffect(() => {
     return () => {
@@ -448,6 +664,8 @@ export default function App() {
     setSources([])
     setCritic(null)
     setReport({ key_findings: [], evidence_and_sources: [], limitations: [] })
+    setEvaluation(null)
+    setJudgeMetadata(null)
     setErrorMsg('')
 
     setStatusMode('idle')
@@ -459,7 +677,7 @@ export default function App() {
 
   const onExport = useCallback(() => {
     if (!lastResponse) return
-    const q = (lastResponse.query || 'research').toString().slice(0, 40).replaceAll(/[^a-z0-9\-_\s]/gi, '')
+    const q = (lastResponse.query || 'research').toString().slice(0, 40).replaceAll(/[^a-z0-9-_\s]/gi, '')
     const stamp = new Date().toISOString().replaceAll(':', '-')
     const blob = new Blob([JSON.stringify(lastResponse, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -498,6 +716,171 @@ export default function App() {
     return m
   }, [sources])
   void urlToSourceIndex
+
+  const handlePublish = useCallback(
+    async (message) => {
+      const reportId = message?.reportId
+      if (!reportId) return
+
+      // optimistic UI
+      setPublishByReportId((prev) => ({
+        ...prev,
+        [reportId]: { status: 'publishing' },
+      }))
+
+      try {
+        // Use the message-specific report blocks when available (revision flow returns a new report)
+        // so we don't accidentally publish a stale `lastResponse.report`.
+        const reportFromMessage = {
+          ...(lastResponse?.report || {}),
+          ...(message?.topic ? { topic: message.topic } : {}),
+          ...(Array.isArray(message?.reportBlocks) ? { blocks: message.reportBlocks } : {}),
+          ...(message?.reportId ? { id: message.reportId } : {}),
+        }
+
+        const base = API_BASE || window.location.origin
+        const url = `${base}/api/reports/${encodeURIComponent(String(reportId))}/publish`
+
+        const payload = {
+          query: String(message?.topic || lastResponse?.query || '').trim() || 'report',
+          report: reportFromMessage,
+          evaluation: message?.evaluation || null,
+          metadata: message?.judgeMetadata || null,
+          sources: lastResponse?.sources || [],
+        }
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(payload),
+        })
+
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          const detail = data?.detail?.message || data?.detail || data?.message || `${res.status} ${res.statusText}`
+          throw new Error(String(detail))
+        }
+
+        setPublishByReportId((prev) => ({
+          ...prev,
+          [reportId]: { status: 'published', publishedAt: data?.published_at },
+        }))
+
+        // Stage tracker: show Published state on success.
+        setStage('published')
+
+        addMessage('agent', `Published report ${reportId} at ${data?.published_at || ''}`.trim(), { statusText: 'Published.' })
+      } catch (e) {
+        setPublishByReportId((prev) => ({
+          ...prev,
+          [reportId]: { status: 'error', error: `Publish failed: ${String(e?.message || e)}` },
+        }))
+      }
+    },
+    [API_BASE, addMessage, lastResponse],
+  )
+
+  const handleRequestRevision = useCallback(
+    (message) => {
+      const mid = message?.id
+      if (!mid) return
+      setReviseUI({ open: true, messageId: mid, text: '' })
+    },
+    [setReviseUI],
+  )
+
+  const submitRevision = useCallback(async () => {
+    const message = messages.find((m) => m.id === reviseUI.messageId)
+    const reportId = message?.reportId
+    if (!message || !reportId) {
+      setReviseUI({ open: false, messageId: null, text: '' })
+      return
+    }
+
+    const note = (reviseUI.text || '').trim()
+
+    // Preserve history: append user revision request, then start a new run.
+    addMessage('user', `Revision request for ${reportId}: ${note}`.trim())
+
+    stopCurrentRun()
+    resetPanelsForNewRun()
+
+    setStatusMode('working')
+    setStage('planning')
+    setIterationCount(0)
+
+    runRef.current.startedAt = performance.now()
+    elapsedTimerRef.current = window.setInterval(() => {
+      const started = runRef.current.startedAt
+      if (started != null) setElapsedMs(Math.max(0, performance.now() - started))
+    }, 250)
+
+    const agentRunId = `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: agentRunId,
+        role: 'agent',
+        text: 'Working on the revision…',
+        statusText: 'Starting revision…',
+      },
+    ])
+
+    try {
+      const base = API_BASE || window.location.origin
+      const url = `${base}/api/reports/${encodeURIComponent(String(reportId))}/revise`
+      const payload = {
+        query: String(message?.topic || lastResponse?.query || '').trim() || 'report',
+        user_note: note,
+        report: lastResponse?.report || {},
+        evaluation: message?.evaluation || {},
+        metadata: message?.judgeMetadata || null,
+        sources: lastResponse?.sources || [],
+      }
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const detail = data?.detail?.message || data?.detail || data?.message || `${res.status} ${res.statusText}`
+        throw new Error(String(detail))
+      }
+
+      setLastResponse(data)
+      setReport(data.report || { key_findings: [], evidence_and_sources: [], limitations: [] })
+      setEvaluation(data.evaluation || null)
+      setJudgeMetadata(data.metadata || null)
+      setStage(data.evaluation ? 'judge_step' : 'report_step')
+
+      const blocks = (data.report && Array.isArray(data.report.blocks) && data.report.blocks) || []
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === agentRunId
+            ? {
+                ...m,
+                text: 'Revised report ready.',
+                reportBlocks: blocks,
+                evaluation: data.evaluation || undefined,
+                judgeMetadata: data.metadata || undefined,
+                topic: data.report?.topic || data.query || undefined,
+                reportId: data.report?.id || undefined,
+                statusText: 'Done.',
+              }
+            : m,
+        ),
+      )
+    } catch (e) {
+      addMessage('agent', `Revision failed: ${String(e?.message || e)}`, { statusText: 'Error.' })
+    } finally {
+      setReviseUI({ open: false, messageId: null, text: '' })
+      stopCurrentRun()
+    }
+  }, [API_BASE, addMessage, lastResponse, messages, resetPanelsForNewRun, reviseUI.messageId, reviseUI.text, stopCurrentRun])
 
   // Legacy flags (no longer used since ChatPanel drives Send)
   // const sendDisabled = statusMode === 'working'
@@ -580,10 +963,57 @@ export default function App() {
       </header>
 
       <main className="flex flex-1 overflow-hidden min-h-0" style={{ height: 'calc(100vh - 57px)' }}>
+        {/* Revision modal */}
+        {reviseUI.open ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.55)' }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Request revision"
+          >
+            <div className="w-[min(680px,92vw)] rounded-xl border border-[#233648] bg-[#0f1a25] p-4">
+              <div className="text-sm font-bold text-white">Request revision</div>
+              <div className="text-[12px] text-white/70 mt-1">Describe what should change in the next version.</div>
+              <textarea
+                className="mt-3 w-full rounded-lg bg-[#111a22] border border-[#233648] p-3 text-sm text-white/90"
+                rows={5}
+                value={reviseUI.text}
+                onChange={(e) => setReviseUI((prev) => ({ ...prev, text: e.target.value }))}
+                placeholder="e.g., Address the judge weaknesses, add missing citations, tighten scope…"
+              />
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-lg bg-[#233648] border border-[#324d67] text-[#92adc9] hover:text-white hover:border-primary text-xs font-bold"
+                  onClick={() => setReviseUI({ open: false, messageId: null, text: '' })}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-lg bg-primary text-white text-xs font-bold disabled:opacity-60"
+                  disabled={statusMode === 'working'}
+                  onClick={submitRevision}
+                >
+                  Submit revision
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {/* Left Panel: Chat Interface (redone) */}
         <section className="w-1/2 flex flex-col min-h-0 border-r border-[#233648] bg-background-dark/50">
           <ChatPanel
-            messages={messages}
+            messages={messages.map((m) =>
+              m.role === 'agent' && m.reportId
+                ? {
+                    ...m,
+                    publishState: publishByReportId[m.reportId] || { status: 'idle' },
+                  }
+                : m,
+            )}
             draft={draft}
             onDraftChange={setDraft}
             maxRevisions={maxRevisions}
@@ -591,6 +1021,8 @@ export default function App() {
             onSend={runResearch}
             statusMode={statusMode}
             stage={stage}
+            onPublish={handlePublish}
+            onRequestRevision={handleRequestRevision}
           />
         </section>
 
@@ -656,7 +1088,7 @@ export default function App() {
           {/* Execution Timeline */}
           <div className="px-6 pt-6">
             <h3 className="text-xs font-bold text-[#92adc9] uppercase tracking-widest">Execution Timeline</h3>
-            <div className="grid grid-cols-4 gap-3 mt-4">
+            <div className="grid grid-cols-6 gap-3 mt-4">
               <div
                 id="card-planning"
                 className={
@@ -745,6 +1177,45 @@ export default function App() {
                 <p className="text-sm font-bold mt-1">Report</p>
                 <p id="sub-report" className="text-[11px] text-[#92adc9] mt-2">
                   {stageKey === 'report_step' ? 'Working…' : '—'}
+                </p>
+              </div>
+
+              <div
+                id="card-judge"
+                className={
+                  stageKey === 'judge_step'
+                    ? 'bg-[#1a2632] border border-primary/50 rounded-lg p-3 relative ring-1 ring-primary/20'
+                    : 'bg-[#1a2632] border border-[#233648] rounded-lg p-3 relative opacity-70'
+                }
+              >
+                <div id="check-judge" className={`${completedStages.has('judge_step') ? '' : 'hidden '}absolute top-2 right-2 text-green-500`}>
+                  <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                </div>
+                <span className="text-[10px] text-[#92adc9] font-bold uppercase">Stage 5</span>
+                <p className="text-sm font-bold mt-1">Judge</p>
+                <p id="sub-judge" className="text-[11px] text-[#92adc9] mt-2">
+                  {stageKey === 'judge_step' ? 'Working…' : '—'}
+                </p>
+              </div>
+
+              <div
+                id="card-published"
+                className={
+                  stageKey === 'published'
+                    ? 'bg-[#1a2632] border border-primary/50 rounded-lg p-3 relative ring-1 ring-primary/20'
+                    : 'bg-[#1a2632] border border-[#233648] rounded-lg p-3 relative opacity-70'
+                }
+              >
+                <div
+                  id="check-published"
+                  className={`${completedStages.has('published') ? '' : 'hidden '}absolute top-2 right-2 text-green-500`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                </div>
+                <span className="text-[10px] text-[#92adc9] font-bold uppercase">Stage 6</span>
+                <p className="text-sm font-bold mt-1">Published</p>
+                <p id="sub-published" className="text-[11px] text-[#92adc9] mt-2">
+                  {stageKey === 'published' ? 'Done.' : '—'}
                 </p>
               </div>
             </div>

@@ -1,13 +1,33 @@
 import { useEffect, useMemo, useRef } from 'react'
 import styles from './ChatPanel.module.css'
 
+import JudgeEvaluationCard from '../JudgeEvaluationCard/JudgeEvaluationCard.tsx'
+
 /**
  * @typedef {{ id: string; url: string; title?: string }} Citation
  * @typedef {{ id: string; heading?: string; text: string; citations: Citation[] }} ReportBlock
  *
+ * @typedef {Object} Evaluation
+ * @property {{ score: number; max_score: number; percentage: number; reasoning?: string; strengths?: string[]; weaknesses?: string[] }} factual_accuracy
+ * @property {{ score: number; max_score: number; percentage: number; reasoning?: string; strengths?: string[]; weaknesses?: string[]; coverage?: Object }} completeness
+ * @property {number} overall_score
+ * @property {string=} grade
+ * @property {string=} overall_assessment
+ * @property {'publish'|'revise'|'reject'=} recommendation
+ * @property {number=} confidence
+ * @property {string[]=} flags
+ * @property {string[]=} suggested_improvements
+ *
+ * @typedef {Object} JudgeMetadata
+ * @property {string=} evaluation_id
+ * @property {string=} evaluated_at
+ * @property {string=} judge_model
+ * @property {number=} processing_time_ms
+ * @property {string=} evaluation_version
+ *
  * @typedef {(
  *   | { id: string; role: 'user'; text: string }
- *   | { id: string; role: 'agent'; text: string; statusText?: string; reportBlocks?: ReportBlock[] }
+ *   | { id: string; role: 'agent'; text: string; statusText?: string; reportBlocks?: ReportBlock[]; evaluation?: Evaluation; judgeMetadata?: JudgeMetadata; topic?: string; reportId?: string }
  * )} Message
  */
 
@@ -38,6 +58,8 @@ export default function ChatPanel({
   onSend,
   statusMode,
   stage,
+  onPublish,
+  onRequestRevision,
 }) {
   const listRef = useRef(null)
 
@@ -113,50 +135,64 @@ export default function ChatPanel({
                     <div className={styles.bubbleText}>{m.text}</div>
                   </div>
                 ) : (
-                   <div className={styles.agentBubble}>
-                     {Array.isArray(m.reportBlocks) && m.reportBlocks.length > 0 ? (
-                       <div className={styles.reportBubble}>
-                         {m.reportBlocks.map((b) => {
-                           const heading = String(b?.heading || '').trim()
-                           const text = String(b?.text || '').trim()
-                           const citations = Array.isArray(b?.citations) ? b.citations : []
-                           if (!heading && !text) return null
+                  <div className={styles.agentBubble}>
+                    {m.evaluation ? (
+                      <div className={styles.judgeCardWrap}>
+                        <JudgeEvaluationCard
+                          topic={m.topic}
+                          reportId={m.reportId}
+                          evaluation={m.evaluation}
+                          metadata={m.judgeMetadata}
+                          publishState={m.publishState}
+                          onPublish={() => onPublish?.(m)}
+                          onRequestRevision={() => onRequestRevision?.(m)}
+                        />
+                      </div>
+                    ) : null}
 
-                           return (
-                             <div key={String(b?.id || (heading || text).slice(0, 16))} className={styles.reportBlock}>
-                               {heading ? <div className={styles.reportHeading}>{heading}</div> : null}
-                               {text ? <div className={styles.reportText}>{text}</div> : null}
-                               {citations.length ? (
-                                 <div className={styles.reportCitations}>
-                                   {citations.map((c) => {
-                                     const url = String(c?.url || '').trim()
-                                     if (!url) return null
-                                     const label = String(c?.id || '').trim() || '↗'
-                                     const title = String(c?.title || '')
-                                     return (
-                                       <a
-                                         key={String(c?.id || url)}
-                                         className={styles.citationChip}
-                                         href={url}
-                                         target="_blank"
-                                         rel="noreferrer"
-                                         title={title || url}
-                                       >
-                                         {label}
-                                       </a>
-                                     )
-                                   })}
-                                 </div>
-                               ) : null}
-                             </div>
-                           )
-                         })}
-                       </div>
-                     ) : (
-                       <div className={styles.bubbleText}>{m.text}</div>
-                     )}
+                    {Array.isArray(m.reportBlocks) && m.reportBlocks.length > 0 ? (
+                      <div className={styles.reportBubble}>
+                        {m.reportBlocks.map((b) => {
+                          const heading = String(b?.heading || '').trim()
+                          const text = String(b?.text || '').trim()
+                          const citations = Array.isArray(b?.citations) ? b.citations : []
+                          if (!heading && !text) return null
 
-                     {m.statusText ? (
+                          return (
+                            <div key={String(b?.id || (heading || text).slice(0, 16))} className={styles.reportBlock}>
+                              {heading ? <div className={styles.reportHeading}>{heading}</div> : null}
+                              {text ? <div className={styles.reportText}>{text}</div> : null}
+                              {citations.length ? (
+                                <div className={styles.reportCitations}>
+                                  {citations.map((c) => {
+                                    const url = String(c?.url || '').trim()
+                                    if (!url) return null
+                                    const label = String(c?.id || '').trim() || '↗'
+                                    const title = String(c?.title || '')
+                                    return (
+                                      <a
+                                        key={String(c?.id || url)}
+                                        className={styles.citationChip}
+                                        href={url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        title={title || url}
+                                      >
+                                        {label}
+                                      </a>
+                                    )
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className={styles.bubbleText}>{m.text}</div>
+                    )}
+
+                    {m.statusText ? (
                       <div className={styles.agentStatusRow}>
                         <div className={styles.statusIcon} aria-hidden="true">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

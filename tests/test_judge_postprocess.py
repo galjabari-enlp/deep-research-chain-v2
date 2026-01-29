@@ -45,6 +45,9 @@ def test_schema_builds_and_percentages() -> None:
     assert resp.evaluation.completeness.score == 7
     assert resp.evaluation.completeness.percentage == 70
 
+    # overall_score must be strict arithmetic mean (rounded to 1 decimal)
+    assert resp.evaluation.overall_score == 7.5
+
     # coverage must include all template keys
     assert set(resp.evaluation.completeness.coverage.keys()) == set(COVERAGE_KEYS)
 
@@ -140,3 +143,13 @@ def test_overall_assessment_non_empty() -> None:
 
     assert isinstance(resp.evaluation.overall_assessment, str)
     assert resp.evaluation.overall_assessment.strip()
+
+
+def test_overall_score_rounding_is_consistent_one_decimal() -> None:
+    # 9 and 8 average to 8.5 exactly; enforce 1-decimal float (not 2-decimal legacy)
+    llm_out = _base_llm_output(acc=9, comp=8)
+    report = PublicReport(id="rep_abc123", topic="Test", content="Some content", sources=[], word_count=2, created_at=None)
+    resp = build_judge_response(report=report, llm_out=llm_out)
+
+    assert resp.evaluation.overall_score == 8.5
+    assert resp.evaluation.grade == "B"

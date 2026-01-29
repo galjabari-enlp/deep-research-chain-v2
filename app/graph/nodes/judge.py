@@ -43,6 +43,7 @@ SYSTEM_PROMPT = (
     "Evaluate the final report for factual accuracy and completeness. "
     "Be critical: do not give high scores unless the report is well-supported by the provided sources. "
     "Do not invent sources or facts. Only evaluate based on the report content and the sources list. "
+    # IMPORTANT: Judge evaluates output quality; it must not induce the report writer to change behavior.
     "Return ONLY valid JSON matching the provided schema. No markdown. No commentary."
 )
 
@@ -63,13 +64,15 @@ def _clamp_int(x: Any, lo: int, hi: int, default: int) -> int:
 def _compute_overall_score(*, accuracy: int, completeness: int) -> float:
     """Deterministic overall score formula.
 
-    We weight factual accuracy higher because publishing incorrect information is riskier
-    than missing details.
+    Backend is the source of truth: overall_score is the strict arithmetic mean of the
+    rubric subscores that exist today.
 
-    overall_score = 0.65 * factual_accuracy + 0.35 * completeness
+    Rounding policy: round to 1 decimal place, consistently.
+
+    overall_score = mean([factual_accuracy.score, completeness.score])
     """
 
-    return round((0.65 * accuracy) + (0.35 * completeness), 2)
+    return round(((accuracy + completeness) / 2.0), 1)
 
 
 def _grade_from_overall(overall: float) -> str:
@@ -221,16 +224,29 @@ def _judge_user_prompt(*, report: PublicReport) -> str:
         + "\n".join(src_lines)
         + "\n\n"
         "Task: Evaluate factual accuracy and completeness.\n"
-        "For factual accuracy, look for unsourced claims, contradictions, and citation support.\n"
-        "For completeness, check whether the report covers the expected aspects.\n\n"
+        "You must be STRICT: start from a skeptical baseline and require evidence.\n"
+        "However, score the report based on its intended deliverable: a synthesized, well-structured answer to the user query.\n"
+        "If the report is merely a list of snippets/metadata or does not answer the query, score completeness very low and include the flag 'shallow-coverage'.\n"
+        "Citations: treat claims as supported if the report includes explicit citation markers (e.g., [S1]) OR the support is unambiguous from the provided sources list.\n"
+        "Do NOT penalize solely because a claim lacks an in-text citation marker if it is clearly supported by a provided source snippet; instead add 'missing-citations' and explain.\n"
+        "Penalize unsourced claims and any claim that cannot be traced to a provided source.\n"
+        "Penalize outdated/undated sources for fast-changing topics (medicine, policy, AI, security); flag 'outdated-sources' when recency is missing or clearly stale.\n\n"
         f"Completeness coverage checklist keys (MUST include all of them): {coverage_keys}\n"
         "For each key, set coverage[key].status to one of: 'covered', 'missing', 'not_applicable'.\n"
-        "Use 'not_applicable' only if the section is not relevant for this query OR the provided sources do not reasonably support it.\n\n"
-        "Scoring rubric:\n"
-        "- factual_accuracy.score: 0-10 (integer). 10 only if claims are strongly supported by the provided sources.\n"
-        "- completeness.score: 0-10 (integer). 10 only if all key aspects are covered with adequate depth.\n"
-        "Flags: include strings like 'missing-citations', 'unsourced-medical-claims', 'contradiction-detected', 'outdated-sources', 'policy-risk'.\n"
-        "Suggested improvements: concrete action items for revision.\n\n"
+        "Use 'not_applicable' only if the section is genuinely irrelevant for this query OR the provided sources do not reasonably support it.\n\n"
+        "STRICT SCORING rubric (0-10 integers):\n"
+        "- factual_accuracy.score:\n"
+        "  * 10: virtually all non-trivial claims are directly supported by provided sources; no contradictions.\n"
+        "  * 7-9: mostly supported; minor weaknesses.\n"
+        "  * 4-6: multiple important claims are weakly supported/overstated OR the report is structurally misleading.\n"
+        "  * 0-3: many major claims unsupported/incorrect; serious hallucinations or contradictions.\n"
+        "- completeness.score:\n"
+        "  * 10: directly answers the user query and covers all checklist items (or properly marks not_applicable) with adequate depth.\n"
+        "  * 7-9: answers the query; covers most items with decent depth; some gaps.\n"
+        "  * 4-6: partially answers the query; significant missing sections or shallow treatment.\n"
+        "  * 0-3: does not meaningfully answer the query OR is largely a snippet list.\n"
+        "Flags: include strings like 'missing-citations', 'unsourced-medical-claims', 'contradiction-detected', 'outdated-sources', 'policy-risk', 'shallow-coverage'.\n"
+        "Suggested improvements: concrete, actionable revision items (e.g., which claims need citations, which sections are missing, how to better answer the query).\n\n"
         "OUTPUT RULES:\n"
         "- Return ONLY JSON.\n"
         "- Must match schema exactly. No extra keys.\n"

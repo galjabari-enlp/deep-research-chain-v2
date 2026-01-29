@@ -151,6 +151,10 @@
   backdrop-filter: blur(10px);
 }
 
+.judgeCardWrap {
+  margin-bottom: 14px;
+}
+
 .reportBubble {
   display: flex;
   flex-direction: column;

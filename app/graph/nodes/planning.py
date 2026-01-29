@@ -63,9 +63,29 @@ def _planning_user_prompt(
 
 
 async def planning_node(state: ResearchState, llm: LLMClient) -> ResearchState:
-    feedback = ""
+    feedback_parts: list[str] = []
+
+    # Critic feedback (normal loop)
     if state.critic and state.critic.feedback_to_planning:
-        feedback = state.critic.feedback_to_planning
+        feedback_parts.append(state.critic.feedback_to_planning)
+
+    # Revision feedback (from Judge + user)
+    if getattr(state, "revision_base_evaluation", None) is not None:
+        ev = state.revision_base_evaluation
+        # Keep this compact; the planner should explicitly address flags + suggested improvements.
+        feedback_parts.append(
+            "JUDGE FEEDBACK (address this explicitly):\n"
+            + f"- recommendation: {ev.recommendation}\n"
+            + f"- overall_assessment: {ev.overall_assessment}\n"
+            + f"- flags: {list(ev.flags or [])}\n"
+            + f"- suggested_improvements: {list(ev.suggested_improvements or [])}\n"
+        )
+
+    user_note = (getattr(state, "revision_user_note", "") or "").strip()
+    if user_note:
+        feedback_parts.append("USER REVISION NOTE (high priority):\n" + user_note)
+
+    feedback = "\n\n".join([p for p in feedback_parts if (p or "").strip()])
 
     plan_version = 1
     if state.plan_history:
