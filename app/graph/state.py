@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+from app.graph.judge_models import JudgeEvaluation, JudgeMetadata, PublicReport
 from app.graph.trace_models import ExecutionTrace
 
 from .models import (
@@ -49,8 +50,19 @@ class ResearchState:
     iteration_count: int = 0
     max_revisions: int = 10
 
-    # Report
+    # Report (legacy)
     report: Optional[FinalReport] = None
+
+    # Report (public, stable contract for downstream judge + future publish/revision UX)
+    public_report: Optional[PublicReport] = None
+
+    # Judge output (latest) + metadata
+    judge_evaluation: Optional[JudgeEvaluation] = None
+    judge_metadata: Optional[JudgeMetadata] = None
+
+    # Revision-loop support (future): persist past evaluations + user feedback
+    prior_evaluations: List[JudgeEvaluation] = field(default_factory=list)
+    user_revision_requests: List[str] = field(default_factory=list)
 
     # Trace
     trace: List[str] = field(default_factory=list)

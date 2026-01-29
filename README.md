@@ -5,10 +5,10 @@ A runnable backend repo implementing a **cyclical LangGraph research agent** wit
 Key properties:
 - **FastAPI** backend with `POST /research` and `GET /health`
 - **LangGraph** cyclical workflow:
-  [`planning_node()`](app/graph/nodes/planning.py:1) → [`search_node()`](app/graph/nodes/search.py:1) → [`reasoning_node()`](app/graph/nodes/reasoning.py:1) → [`critic_node()`](app/graph/nodes/critic.py:1) → (conditional: replan/refine/report) → [`report_node()`](app/graph/nodes/report.py:1)
+  [`planning_node()`](app/graph/nodes/planning.py:1) → [`search_node()`](app/graph/nodes/search.py:1) → [`reasoning_node()`](app/graph/nodes/reasoning.py:1) → [`critic_node()`](app/graph/nodes/critic.py:1) → (conditional: replan/refine/report) → [`report_node()`](app/graph/nodes/report.py:1) → [`judge_node()`](app/graph/nodes/judge.py:1)
 - **Serper** search (snippets only) via `https://google.serper.dev/search`
 - **OpenAI-compatible** LLM via `OPENAI_BASE_URL` + `OPENAI_API_KEY`
-- Strict **structured outputs** for planning + critic (Pydantic-validated, with one re-ask)
+- Strict **structured outputs** for planning + critic + judge (Pydantic-validated, with one re-ask)
 
 ## Architecture overview
 
@@ -83,18 +83,55 @@ Example response (truncated):
 
 ```json
 {
-  "query": "Explain the main causes of inflation in 2021-2023",
-  "plan": { "plan_version": 1, "research_objective": "…" },
-  "iteration_count": 3,
+  "status": "complete",
   "report": {
-    "key_findings": ["…"],
-    "evidence_and_sources": ["…"],
-    "limitations": ["This agent uses search snippets only …"]
+    "id": "rep_...",
+    "topic": "Explain the main causes of inflation in 2021-2023",
+    "content": "...",
+    "sources": [],
+    "word_count": 0,
+    "created_at": null
   },
-  "sources": [{"title":"…","url":"…","snippet":"…"}],
-  "trace": ["Planned v1 …", "Searched: …", "Critic decision: …"]
+  "evaluation": {
+    "factual_accuracy": {"score": 8, "max_score": 10, "percentage": 80, "reasoning": "...", "strengths": [], "weaknesses": []},
+    "completeness": {"score": 7, "max_score": 10, "percentage": 70, "reasoning": "...", "strengths": [], "weaknesses": [], "coverage": {"overview": {"covered": true, "notes": ""}}},
+    "overall_score": 7.65,
+    "grade": "C",
+    "overall_assessment": "...",
+    "recommendation": "publish",
+    "confidence": 0.7,
+    "flags": [],
+    "suggested_improvements": []
+  },
+  "metadata": {
+    "evaluation_id": "...",
+    "evaluated_at": "2026-01-01T00:00:00Z",
+    "judge_model": "claude-sonnet-4-20250514",
+    "processing_time_ms": 1234,
+    "evaluation_version": "1.0"
+  }
 }
 ```
+
+### Judge scoring + gating logic
+
+Implemented in [`build_judge_response()`](app/graph/nodes/judge.py:171).
+
+- Hard thresholds (publication "greenlight"):
+  - If `factual_accuracy.score < 7` → **NOT publishable** → recommendation is `revise` (or `reject` for severe flags / very low accuracy)
+  - If `completeness.score < 7` → **NOT publishable** → recommendation is `revise`
+
+- Deterministic overall score formula (accuracy-weighted):
+  - `overall_score = 0.65 * factual_accuracy.score + 0.35 * completeness.score`
+
+- Grade mapping:
+  - 9–10: `A`
+  - 8–8.99: `B`
+  - 7–7.99: `C`
+  - 6–6.99: `D`
+  - <6: `F`
+
+- `evaluation.completeness.coverage` is **template-based** (stable keys) so the frontend can render it consistently.
 
 ### CLI
 

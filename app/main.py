@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, conint, constr
 
 from app.core import setup_logging
 from app.graph import ResearchState, build_research_graph
+from app.graph.judge_models import JudgeResponse
 from app.graph.models import ResearchResponse
 from app.services import LLMClient, PageFetcher, SerperClient
 
@@ -75,8 +76,8 @@ async def debug_config() -> dict[str, object]:
     }
 
 
-@app.post("/research", response_model=ResearchResponse)
-async def research(req: ResearchRequest) -> ResearchResponse:
+@app.post("/research", response_model=JudgeResponse)
+async def research(req: ResearchRequest) -> JudgeResponse:
     llm = LLMClient()
     serper = SerperClient()
     fetcher = PageFetcher()
@@ -88,30 +89,67 @@ async def research(req: ResearchRequest) -> ResearchResponse:
     # LangGraph may return either the dataclass state or an internal AddableValuesDict.
     final_state = ResearchState(**raw_state) if isinstance(raw_state, dict) else raw_state
 
-    sources = []
-    for s in final_state.searches:
-        sources.extend(s.results)
+    # Ensure report + evaluation exist (best-effort fallbacks)
+    if final_state.public_report is None:
+        # Fallback: reuse legacy report mapping
+        from app.graph.judge_models import PublicReport
 
-    report = final_state.report
-    if report is None:
-        # Fallback best-effort
-        from app.graph.models import FinalReport
-
-        report = FinalReport(
-            key_findings=["No report generated due to internal error."],
-            evidence_and_sources=["No sources available."],
-            limitations=["Internal error prevented report generation."],
+        final_state.public_report = PublicReport(
+            id="rep_error",
+            topic=req.query,
+            content="",
+            sources=[],
+            word_count=0,
+            created_at=None,
         )
 
-    return ResearchResponse(
-        query=req.query,
-        plan=final_state.plan,
-        iteration_count=final_state.iteration_count,
-        report=report,
-        sources=sources,
-        trace=final_state.trace,
-        execution_trace=final_state.execution_trace,
-        critic=final_state.critic,
+    if final_state.judge_evaluation is None:
+        # Judge may fail validation; return a safe placeholder evaluation.
+        from app.graph.judge_models import JudgeEvaluation
+
+        final_state.judge_evaluation = JudgeEvaluation(
+            factual_accuracy={
+                "score": 0,
+                "max_score": 10,
+                "percentage": 0,
+                "reasoning": "Judge failed to evaluate due to internal error.",
+                "strengths": [],
+                "weaknesses": ["Evaluation unavailable"],
+            },
+            completeness={
+                "score": 0,
+                "max_score": 10,
+                "percentage": 0,
+                "reasoning": "Judge failed to evaluate due to internal error.",
+                "strengths": [],
+                "weaknesses": ["Evaluation unavailable"],
+                "coverage": {},
+            },
+            overall_score=0,
+            grade="F",
+            overall_assessment="Evaluation could not be produced due to an internal error.",
+            recommendation="revise",
+            confidence=0.0,
+            flags=["judge-failed"],
+            suggested_improvements=["Re-run evaluation"],
+        )
+
+    if final_state.judge_metadata is None:
+        from app.graph.judge_models import JudgeMetadata
+
+        final_state.judge_metadata = JudgeMetadata(
+            evaluation_id=None,
+            evaluated_at=None,
+            judge_model="claude-sonnet-4-20250514",
+            processing_time_ms=None,
+            evaluation_version="1.0",
+        )
+
+    return JudgeResponse(
+        status="complete",
+        report=final_state.public_report,
+        evaluation=final_state.judge_evaluation,
+        metadata=final_state.judge_metadata,
     )
 
 
@@ -156,7 +194,7 @@ async def research_stream(query: constr(min_length=3, max_length=500), max_revis
                     continue
 
                 name = (event.get("name") or "").strip()
-                if name in {"planning", "search", "reasoning", "critic_step", "report_step"}:
+                if name in {"planning", "search", "reasoning", "critic_step", "report_step", "judge_step"}:
                     raw_out = event.get("data", {}).get("output")
                     if raw_out is None:
                         continue
@@ -210,6 +248,8 @@ async def research_stream(query: constr(min_length=3, max_length=500), max_revis
                     limitations=["Internal error prevented report generation."],
                 )
 
+            # Legacy final event payload still emits ResearchResponse (frontend migration compatibility).
+            # New /research (non-streaming) endpoint returns the JudgeResponse schema.
             response = ResearchResponse(
                 query=query,
                 plan=final_state.plan,
@@ -253,7 +293,13 @@ async def research_stream(query: constr(min_length=3, max_length=500), max_revis
 # ---- Frontend mount (place last so explicit API routes win) ----
 # Mount under /ui so it doesn't intercept API endpoints like /health, /research/*.
 # NOTE: assets are served from /assets by the mount below.
-app.mount("/ui", StaticFiles(directory="frontend/dist", html=True), name="frontend")
+#
+# During tests / CI, the frontend build output may not exist; avoid import-time failures.
+import os
 
-# Serve built assets at the root (/assets/...) to match Vite's default build output.
-app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+if os.path.isdir("frontend/dist"):
+    app.mount("/ui", StaticFiles(directory="frontend/dist", html=True), name="frontend")
+
+if os.path.isdir("frontend/dist/assets"):
+    # Serve built assets at the root (/assets/...) to match Vite's default build output.
+    app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")

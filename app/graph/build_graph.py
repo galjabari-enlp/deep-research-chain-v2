@@ -6,6 +6,7 @@ from langgraph.graph import END, StateGraph
 
 from app.graph.enforce import validate_gap_query_against_plan
 from app.graph.nodes.critic import critic_node
+from app.graph.nodes.judge import judge_node
 from app.graph.nodes.planning import planning_node
 from app.graph.nodes.reasoning import reasoning_node
 from app.graph.nodes.report import report_node
@@ -64,6 +65,9 @@ def build_research_graph(*, llm: LLMClient, serper: SerperClient, fetcher: PageF
     async def report_step(state: ResearchState) -> ResearchState:
         return await report_node(state)
 
+    async def judge_step(state: ResearchState) -> ResearchState:
+        return await judge_node(state, llm)
+
     graph.add_node("planning", planning)
     graph.add_node("search", search)
     graph.add_node("reasoning", reasoning)
@@ -71,6 +75,7 @@ def build_research_graph(*, llm: LLMClient, serper: SerperClient, fetcher: PageF
     graph.add_node("critic_step", critic_step)
     # Node names must not collide with state keys (ResearchState has a 'report' field)
     graph.add_node("report_step", report_step)
+    graph.add_node("judge_step", judge_step)
 
     graph.set_entry_point("planning")
 
@@ -87,6 +92,7 @@ def build_research_graph(*, llm: LLMClient, serper: SerperClient, fetcher: PageF
         },
     )
 
-    graph.add_edge("report_step", END)
+    graph.add_edge("report_step", "judge_step")
+    graph.add_edge("judge_step", END)
 
     return graph.compile()

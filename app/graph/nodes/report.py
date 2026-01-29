@@ -29,6 +29,8 @@ async def report_node(state: ResearchState) -> ResearchState:
 
     Preferred: ask the LLM to write natural-prose paragraphs and explicit citations per paragraph.
     Fallback: build blocks from existing snippet-derived findings.
+
+    Also populates `state.public_report` (stable contract) for downstream Judge and API.
     """
 
     sources = _collect_sources(state)
@@ -192,6 +194,60 @@ async def report_node(state: ResearchState) -> ResearchState:
         limitations=limitations,
         blocks=blocks,
     )
+
+    # Populate stable public report object for downstream evaluation/UI.
+    try:
+        import uuid
+
+        from app.graph.judge_models import PublicReport
+
+        # Flatten unique sources (same logic as report evidence list).
+        public_sources: list[dict] = []
+        seen_urls: set[str] = set()
+        for s in state.searches:
+            for r in s.results:
+                url = str(r.url)
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                public_sources.append(
+                    {
+                        "title": r.title,
+                        "url": url,
+                        "snippet": r.snippet,
+                        "source": r.source,
+                    }
+                )
+
+        content_parts: list[str] = []
+        for b in blocks:
+            h = (b.heading or "").strip()
+            t = (b.text or "").strip()
+            if not t:
+                continue
+
+            # Include in-text citation markers so downstream Judge can verify support.
+            # Format: "[S1,S4]" using the block's citation ids.
+            cids = [c.id.strip() for c in (b.citations or []) if (c.id or "").strip()]
+            cid_str = f" [{','.join(cids[:6])}]" if cids else ""
+
+            content_parts.append(f"{h}\n{t}{cid_str}" if h else f"{t}{cid_str}")
+        content = "\n\n".join(content_parts).strip()
+        if not content:
+            content = "\n".join(state.report.key_findings or [])
+
+        word_count = len([w for w in content.split() if w.strip()]) if content else 0
+
+        state.public_report = PublicReport(
+            id=f"rep_{uuid.uuid4().hex[:8]}",
+            topic=state.query,
+            content=content,
+            sources=public_sources,
+            word_count=word_count,
+            created_at=None,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Failed to build public_report: %s", e)
 
     from app.graph.trace_models import add_trace_item, make_link
 

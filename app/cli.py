@@ -6,6 +6,7 @@ import json
 
 from dotenv import load_dotenv
 
+from app.cli_render import render_evaluation_card, render_missing_evaluation_card
 from app.core import setup_logging
 from app.graph import ResearchState, build_research_graph
 from app.services import LLMClient, PageFetcher, SerperClient
@@ -71,6 +72,14 @@ def _print_report(state: ResearchState, *, verbose_trace: bool, show_urls: bool)
     else:
         print("(no report generated)")
 
+    # ---- Judge evaluation card ----
+    if getattr(state, "public_report", None) is not None and getattr(state, "judge_evaluation", None) is not None:
+        print("\n=== REPORT EVALUATION ===")
+        print(render_evaluation_card(report=state.public_report, evaluation=state.judge_evaluation))
+    elif getattr(state, "public_report", None) is not None:
+        print("\n=== REPORT EVALUATION ===")
+        print(render_missing_evaluation_card(report=state.public_report))
+
 
 async def _run(query: str, max_revisions: int, *, verbose_trace: bool, show_urls: bool) -> int:
     llm = LLMClient()
@@ -91,6 +100,15 @@ async def _run(query: str, max_revisions: int, *, verbose_trace: bool, show_urls
 def main() -> int:
     # Explicitly load `.env` for CLI runs.
     load_dotenv(override=False)
+
+    # Debug: confirm settings resolved from environment.
+    from app.core import settings
+
+    key = settings.openai_api_key or ""
+    print(
+        f"[debug] settings.openai_model={settings.openai_model!r} base_url={settings.openai_base_url!r} "
+        f"api_key_len={len(key)} api_key_tail={key[-4:] if len(key) >= 4 else ''!r}"
+    )
 
     setup_logging("INFO")
     parser = argparse.ArgumentParser(description="Deep Research Agent CLI")
