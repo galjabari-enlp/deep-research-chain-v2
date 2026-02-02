@@ -203,18 +203,34 @@ export default function App() {
   const stageKey = stage ? stageMap[stage] || stage : null
 
   const completedStages = useMemo(() => {
+    // Mark steps as completed only when we have clearly advanced past them.
+    // This fixes a UI bug where when policy_guard is active the Plan/Search cards show as completed.
     const s = new Set()
-    if (stageKey && stageKey !== 'planning') s.add('planning')
-    if (stageKey && stageKey !== 'search' && stageKey !== 'planning') s.add('search')
 
-    // Anything at/after report implies critic is complete.
-    if (stageKey && (stageKey === 'report_step' || stageKey === 'judge_step')) s.add('critic_step')
+    // Plan is completed once we have moved into (or past) Search.
+    if (stageKey && ['search', 'critic_step', 'report_step', 'judge_step', 'published'].includes(stageKey)) {
+      s.add('planning')
+    }
 
-    // Anything at/after judge implies report is complete.
-    if (stageKey && (stageKey === 'report_step' || stageKey === 'judge_step')) s.add('report_step')
+    // Search is completed once we have moved into (or past) Critic.
+    if (stageKey && ['critic_step', 'report_step', 'judge_step', 'published'].includes(stageKey)) {
+      s.add('search')
+    }
+
+    // Critic is completed once we have moved into (or past) Report.
+    if (stageKey && ['report_step', 'judge_step', 'published'].includes(stageKey)) {
+      s.add('critic_step')
+    }
+
+    // Report is completed once we have moved into (or past) Judge.
+    if (stageKey && ['judge_step', 'published'].includes(stageKey)) {
+      s.add('report_step')
+    }
 
     // Judge completes only when we are at judge step (or beyond, if we add more in the future).
-    if (stageKey === 'judge_step' || stageKey === 'published') s.add('judge_step')
+    if (stageKey && ['judge_step', 'published'].includes(stageKey)) {
+      s.add('judge_step')
+    }
 
     if (stageKey === 'published') s.add('published')
 
@@ -857,9 +873,16 @@ export default function App() {
     stopCurrentRun()
     resetPanelsForNewRun()
 
+    // IMPORTANT: revisions are hard-coded server-side to run exactly 1 iteration.
+    // Ensure the UI counter matches the actual revision run.
+    setMaxRevisions(1)
+
     setStatusMode('working')
-    // Revision is a full new pass; start at policy guard like a normal run.
-    setStage('policy_guard')
+
+    // IMPORTANT: stage must reflect the real first step.
+    // The /revise endpoint is synchronous (not SSE) and the first actual work is planning.
+    // Showing policy_guard here caused the timeline to appear wrong.
+    setStage('planning')
     setIterationCount(0)
 
     runRef.current.startedAt = performance.now()
